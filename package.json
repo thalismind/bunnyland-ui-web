@@ -1,0 +1,71 @@
+{
+  "name": "@bunnyland/ui-web",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Shared web UI helpers, themes, and widgets for Bunnyland browser clients.",
+  "license": "UNLICENSED",
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": [
+    "./assets/*.css",
+    "./assets/*.js"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "assets",
+    "dist",
+    "src"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./api": {
+      "types": "./dist/api.d.ts",
+      "default": "./dist/api.js"
+    },
+    "./play": {
+      "types": "./dist/play.d.ts",
+      "default": "./dist/play.js"
+    },
+    "./theme": {
+      "types": "./dist/theme.d.ts",
+      "default": "./dist/theme.js"
+    },
+    "./widgets": {
+      "types": "./dist/widgets.d.ts",
+      "default": "./dist/widgets.js"
+    },
+    "./player-widgets": {
+      "types": "./dist/player-widgets.d.ts",
+      "default": "./dist/player-widgets.js"
+    },
+    "./admin-widgets": {
+      "types": "./dist/admin-widgets.d.ts",
+      "default": "./dist/admin-widgets.js"
+    },
+    "./assets/bunnyland-ui.css": "./assets/bunnyland-ui.css",
+    "./assets/bunnyland-ui.js": "./assets/bunnyland-ui.js",
+    "./assets/bunnyland-api.js": "./assets/bunnyland-api.js",
+    "./assets/bunnyland-play.js": "./assets/bunnyland-play.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && vite build",
+    "lint": "eslint src test vite.config.ts",
+    "test": "node --test",
+    "test:coverage": "node --test --experimental-test-coverage",
+    "check": "npm run lint && npm run build && npm run test:coverage"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.5.0",
+    "globals": "^17.6.0",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.49.0",
+    "vite": "^5.4.0"
+  }
+}
