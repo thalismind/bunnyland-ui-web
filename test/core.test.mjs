@@ -15,6 +15,8 @@ import {
   parseCharacterProjection,
   queuedCommandLabel,
   socketUrl,
+  bindThemeSelect,
+  THEME_KEY,
 } from '../dist/index.js';
 import { renderGalleryItems } from '../dist/player-widgets.js';
 
@@ -27,6 +29,45 @@ test('API and theme helpers normalize shared client state', () => {
   assert.equal(socketUrl('https://server.test/api/', '/world/updates'), 'wss://server.test/api/world/updates');
   assert.equal(normalizeTheme('dark'), 'purple-blue-dark');
   assert.equal(normalizeTheme('nope'), 'purple-blue-dark');
+});
+
+test('theme select restores the stored theme on page load', () => {
+  const classes = new Set(['bl-theme-purple-blue-dark']);
+  const listeners = new Map();
+  const values = new Map([[THEME_KEY, 'earth-light']]);
+  const previousDocument = globalThis.document;
+  const previousLocalStorage = globalThis.localStorage;
+  globalThis.document = {
+    documentElement: {
+      classList: {
+        add: value => classes.add(value),
+        remove: value => classes.delete(value),
+        [Symbol.iterator]: function* iterator() { yield* classes; },
+      },
+      dataset: {},
+    },
+  };
+  globalThis.localStorage = {
+    getItem: key => values.get(key) || null,
+    setItem: (key, value) => values.set(key, value),
+  };
+  try {
+    const select = {
+      innerHTML: '',
+      value: '',
+      addEventListener: (event, handler) => listeners.set(event, handler),
+    };
+    bindThemeSelect(select);
+    assert.equal(select.value, 'earth-light');
+    assert.equal(globalThis.document.documentElement.dataset.theme, 'earth-light');
+    assert.equal(classes.has('bl-theme-earth-light'), true);
+    select.value = 'anime-dark';
+    listeners.get('change')();
+    assert.equal(values.get(THEME_KEY), 'anime-dark');
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.localStorage = previousLocalStorage;
+  }
 });
 
 test('play helpers parse projections, filter actions, and label queued commands', () => {

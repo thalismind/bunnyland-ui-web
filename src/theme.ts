@@ -57,7 +57,7 @@ export function bindThemeSelect(select: HTMLSelectElement | null): { setValue: (
   select.innerHTML = THEME_OPTIONS.map(option => `
     <option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>
   `).join('');
-  select.value = currentTheme();
+  select.value = initTheme();
   select.addEventListener('change', () => setTheme(select.value));
   return {
     setValue(value: string): void {
