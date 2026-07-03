@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bunnyland UI Web — Storybook</title>
+    <link rel="stylesheet" href="assets/bunnyland-ui.css" />
+    <style>
+      /* Storybook-only layout. The shared base style pins the body to a fixed-height
+         flex column; a gallery of stories needs to scroll and be captured full-height. */
+      body {
+        display: block;
+        height: auto;
+        min-height: 100vh;
+        overflow: auto;
+      }
+
+      #toolbar {
+        position: sticky;
+        top: 0;
+        z-index: 50;
+      }
+
+      .sb-page {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 18px 20px 60px;
+      }
+
+      .sb-intro {
+        margin-bottom: 18px;
+        color: var(--bl-text-soft);
+        font-size: var(--bl-text-md);
+        line-height: 1.6;
+      }
+
+      .sb-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .sb-card {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        min-width: 0;
+        padding: 14px;
+        border: 1px solid var(--bl-border);
+        border-radius: var(--bl-radius-md);
+        background: var(--bl-bg-strong);
+      }
+
+      .sb-card.wide {
+        grid-column: 1 / -1;
+      }
+
+      .sb-card-title {
+        color: var(--bl-accent-strong);
+        font-size: var(--bl-text-md);
+        font-weight: bold;
+      }
+
+      .sb-card-desc {
+        color: var(--bl-text-muted);
+        font-size: var(--bl-text-xs);
+        line-height: 1.5;
+      }
+
+      .sb-demo {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 12px;
+        border: 1px dashed var(--bl-border-muted);
+        border-radius: var(--bl-radius-sm);
+        background: var(--bl-bg);
+      }
+
+      .sb-swatches {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 6px;
+      }
+
+      .sb-swatch {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 6px;
+        border: 1px solid var(--bl-border-muted);
+        border-radius: var(--bl-radius-sm);
+        font-size: var(--bl-text-xs);
+        color: var(--bl-text-soft);
+      }
+
+      .sb-swatch .chip {
+        height: 26px;
+        border-radius: var(--bl-radius-sm);
+        border: 1px solid var(--bl-border-control);
+      }
+
+      .sb-pane-demo {
+        height: 220px;
+        border: 1px solid var(--bl-border);
+        border-radius: var(--bl-radius-sm);
+        overflow: hidden;
+      }
+
+      .sb-row-inline {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="toolbar">
+      <div class="toolbar-row" id="toolbar-row1">
+        <span class="toolbar-brand">🐰 Bunnyland UI Web</span>
+        <span class="toolbar-sep">|</span>
+        <a class="toolbar-link" href="screenshots.html">Screenshots</a>
+        <a class="toolbar-link" href="https://github.com/thalismind/bunnyland-ui-web">Source</a>
+        <label class="push" for="theme-select">Theme</label>
+        <select id="theme-select"></select>
+        <button id="btn-help" type="button">Help</button>
+        <button id="btn-client-menu" class="client-menu-button" type="button">Clients</button>
+      </div>
+      <div class="toolbar-row" id="toolbar-row2">
+        <span class="toolbar-sep">Storybook</span>
+        <span id="status" class="ok">● shared component gallery</span>
+      </div>
+    </div>
+
+    <main class="sb-page">
+      <p class="sb-intro">
+        Live rendering of the shared <code>@bunnyland/ui-web</code> style system: the same
+        CSS tokens, toolbar, form controls, and widget helpers that the inspector, editors,
+        player, and out-of-tree clients build on. Switch the theme in the toolbar to see every
+        palette; the CI build captures one screenshot per theme.
+      </p>
+
+      <div class="sb-grid">
+        <!-- Color tokens -->
+        <section class="sb-card">
+          <div class="sb-card-title">Color tokens</div>
+          <div class="sb-card-desc">The <code>--bl-*</code> palette variables that every surface, border, and status color derives from.</div>
+          <div class="sb-demo">
+            <div class="sb-swatches" id="sb-swatches"></div>
+          </div>
+        </section>
+
+        <!-- Buttons -->
+        <section class="sb-card">
+          <div class="sb-card-title">Buttons</div>
+          <div class="sb-card-desc">Base <code>button</code> plus <code>.button-row</code> grouping and the disabled state.</div>
+          <div class="sb-demo">
+            <div class="button-row">
+              <button type="button">Connect</button>
+              <button type="button">▶ Run</button>
+              <button type="button">⏸ Pause</button>
+              <button type="button">↑ Zoom out</button>
+              <button type="button" disabled>Disabled</button>
+            </div>
+            <div class="sb-row-inline">
+              <a class="nav-link" href="#">Open in World Editor</a>
+              <span class="tiny">.nav-link</span>
+              <span class="danger">.danger error text</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Inputs -->
+        <section class="sb-card">
+          <div class="sb-card-title">Inputs &amp; selects</div>
+          <div class="sb-card-desc">Text, number, file, select, and textarea controls share one token-driven style.</div>
+          <div class="sb-demo">
+            <div class="sb-row-inline">
+              <input type="text" placeholder="🔍 find, type:, component:" />
+              <input type="number" value="8" min="1" style="width: 72px" />
+              <select>
+                <option>mlp</option>
+                <option>deep</option>
+                <option>residual</option>
+              </select>
+              <input type="file" />
+            </div>
+            <textarea rows="3">{ "seed": 42, "episodes": 8 }</textarea>
+          </div>
+        </section>
+
+        <!-- Form fields -->
+        <section class="sb-card">
+          <div class="sb-card-title">Form fields</div>
+          <div class="sb-card-desc"><code>.control-stack</code>, <code>.field-row</code>, and the <code>.form-grid</code> / <code>.field</code> layout.</div>
+          <div class="sb-demo">
+            <div class="control-stack" style="padding: 0">
+              <div class="field-row">
+                <label>Character <select><option>Bun (character:1)</option></select></label>
+                <label>Behavior <select><option>idle</option></select></label>
+              </div>
+              <div class="form-grid">
+                <label class="field"><span class="field-label">Episodes</span><input type="number" value="8" /></label>
+                <label class="field"><span class="field-label">Updates</span><input type="number" value="4" /></label>
+                <label class="field wide"><span class="field-label">Seed
+                  <span class="nullable-choice"><input type="checkbox" checked /> set</span>
+                </span><input type="text" value="42" /></label>
+              </div>
+              <p class="hint">Hint text uses <code>.hint</code> — muted, compact guidance under a control.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Pills -->
+        <section class="sb-card">
+          <div class="sb-card-title">Pills</div>
+          <div class="sb-card-desc">Compact read-only badges via <code>.pill-row</code> / <code>.pill</code>.</div>
+          <div class="sb-demo">
+            <div class="pill-row">
+              <span class="pill">🏠 room</span>
+              <span class="pill">🐰 character</span>
+              <span class="pill">📦 container</span>
+              <span class="pill">🚪 door</span>
+              <span class="pill">📜 quest</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tag editor -->
+        <section class="sb-card">
+          <div class="sb-card-title">Tag editor</div>
+          <div class="sb-card-desc">Interactive widget from <code>tagEditorHtml()</code> + <code>bindTagEditor()</code>.</div>
+          <div class="sb-demo">
+            <div id="sb-tag-editor"></div>
+          </div>
+        </section>
+
+        <!-- Search dropdown -->
+        <section class="sb-card">
+          <div class="sb-card-title">Search dropdown</div>
+          <div class="sb-card-desc">Type-to-filter selector wired with <code>bindSearchDropdown()</code>.</div>
+          <div class="sb-demo">
+            <div class="search-dropdown" id="sb-search-dropdown">
+              <input class="search-dropdown-input" type="text" placeholder="Pick a room…" spellcheck="false" autocomplete="off" aria-expanded="false" />
+              <input class="search-dropdown-value" type="hidden" />
+              <div class="search-dropdown-menu hidden"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Metrics -->
+        <section class="sb-card">
+          <div class="sb-card-title">Metrics</div>
+          <div class="sb-card-desc">Dashboard tiles via <code>.metric-grid</code> / <code>.metric</code>.</div>
+          <div class="sb-demo">
+            <div class="metric-grid">
+              <div class="metric"><div class="metric-value">128</div><div class="metric-label">entities</div></div>
+              <div class="metric"><div class="metric-value">12</div><div class="metric-label">rooms</div></div>
+              <div class="metric"><div class="metric-value">3</div><div class="metric-label">jobs running</div></div>
+              <div class="metric"><div class="metric-value">epoch 4210</div><div class="metric-label">world clock</div></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Pane + entity list -->
+        <section class="sb-card">
+          <div class="sb-card-title">Pane &amp; entity list</div>
+          <div class="sb-card-desc"><code>.pane</code> chrome with an <code>.entity-row</code> list and a selected row.</div>
+          <div class="sb-demo" style="padding: 0">
+            <div class="sb-pane-demo">
+              <div class="pane" style="height: 100%; border-right: none">
+                <div class="pane-header">
+                  <span class="pane-title">Rooms</span>
+                  <span class="pane-count">4</span>
+                </div>
+                <div class="pane-body">
+                  <div class="entity-row active"><span>🏠</span><span><span class="entity-name">Sunlit Meadow</span><span class="entity-meta">outdoor · 3 exits</span></span></div>
+                  <div class="entity-row"><span>🏠</span><span><span class="entity-name">Warren Entrance</span><span class="entity-meta">indoor · 2 exits</span></span></div>
+                  <div class="entity-row"><span>🐰</span><span><span class="entity-name">Bun</span><span class="entity-meta">character · idle</span></span></div>
+                  <div class="entity-row"><span>📦</span><span><span class="entity-name">Woven Basket</span><span class="entity-meta">container · 2 items</span></span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Activity feed -->
+        <section class="sb-card">
+          <div class="sb-card-title">Activity feed</div>
+          <div class="sb-card-desc">Passive log rows via <code>.activity-row</code>, including <code>.kind-ok</code> and <code>.kind-error</code>.</div>
+          <div class="sb-demo" style="padding: 0">
+            <div class="activity-row"><span class="activity-time">epoch 4188</span><span>Bun moved north to Warren Entrance.</span></div>
+            <div class="activity-row kind-ok"><span class="activity-time">epoch 4190</span><span>Training job job:7 completed.</span></div>
+            <div class="activity-row"><span class="activity-time">epoch 4201</span><span>Basket opened by Bun.</span></div>
+            <div class="activity-row kind-error"><span class="activity-time">epoch 4205</span><span>Command rejected: too tired.</span></div>
+          </div>
+        </section>
+
+        <!-- Cards / sections -->
+        <section class="sb-card wide">
+          <div class="sb-card-title">Records &amp; sections</div>
+          <div class="sb-card-desc">Repeated framed records use <code>.record-card</code> / <code>.action-card</code>; grouped forms use <code>.section-title</code>.</div>
+          <div class="sb-demo">
+            <div class="section-title">Training job <button type="button">Cancel</button></div>
+            <div class="record-card">
+              <div class="record-head">job:7 · running <button type="button">Logs</button></div>
+              <div class="record-body">
+                <div class="field-row">
+                  <span class="pill">policy: mlp</span>
+                  <span class="pill">episode 6</span>
+                  <span class="pill">update 3</span>
+                </div>
+                <p class="tiny">checkpoint: runs/job-7/step-3.pt</p>
+              </div>
+            </div>
+            <div class="action-card">
+              <div class="action-head">Model model:3 <button type="button">Assign</button></div>
+              <div class="action-body">
+                <p class="tiny">artifact: models/model-3.tar · weights: model-3.safetensors</p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <script src="assets/bunnyland-ui.js"></script>
+    <script src="storybook.js"></script>
+  </body>
+</html>

@@ -66,6 +66,29 @@ Framework-specific UI packages can wrap these behaviors in components without du
 
 Player clients should favor contextual, rich controls for interacting with the current room, visible entities, exits, inventory, queued actions, and images. Admin clients should favor detailed inspection and editing controls such as structured fields, sliders, selectors, tag editors, and lower-level component data. Keep those surfaces separate when adding reusable widgets.
 
+## Storybook
+
+A component storybook renders the shared toolbar, theme selector, form controls, and widget
+helpers as a live gallery so the style system is easy to review. Build it with:
+
+```sh
+npm run storybook
+```
+
+That builds the package and writes `storybook-dist/`:
+
+- `index.html` — the live, interactive storybook (theme selector, tag editor, search dropdown, client menu).
+- `screenshots.html` — a gallery of one PNG per theme plus the client-menu overlay.
+- `screenshots/*.png` — the captured screenshots.
+- `storybook.zip` — an offline bundle of the HTML, CSS, JS, and screenshots.
+
+The capture uses Playwright's bundled Chromium (`npx playwright install chromium`) and falls
+back to a system Chrome via `STORYBOOK_BROWSER_CHANNEL` when the bundled browser is missing.
+
+CI publishes the `storybook-dist/` directory and `storybook.zip` as build artifacts and builds
+`Dockerfile.storybook` into an nginx image (`bunnyland-ui-web-storybook`) that serves the
+browsable storybook.
+
 ## Checks
 
 Run:
