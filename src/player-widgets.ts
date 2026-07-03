@@ -4,9 +4,9 @@ export interface GalleryItem {
   id: string;
   src: string;
   title: string;
-  detail?: string;
-  filename?: string;
-  createdAt?: number;
+  detail: string;
+  filename: string;
+  createdAt: number;
 }
 
 export function mergeGalleryItems(items: GalleryItem[], item: GalleryItem, limit = 36): GalleryItem[] {
@@ -14,7 +14,7 @@ export function mergeGalleryItems(items: GalleryItem[], item: GalleryItem, limit
   const next = existing
     ? items.map(entry => entry === existing ? { ...existing, ...item } : entry)
     : [...items, item];
-  return next.sort((a, b) => Number(a.createdAt || 0) - Number(b.createdAt || 0)).slice(-limit);
+  return next.sort((a, b) => a.createdAt - b.createdAt).slice(-limit);
 }
 
 export function renderGalleryItems(items: GalleryItem[]): string {

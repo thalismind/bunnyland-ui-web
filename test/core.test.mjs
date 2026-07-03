@@ -124,7 +124,14 @@ test('browser asset globals stay compatible with static clients', () => {
 });
 
 test('gallery helpers render images with the correct spelling', () => {
-  const html = renderGalleryItems([{ id: 'one', src: 'data:image/png;base64,abc', title: 'Scene image' }]);
+  const html = renderGalleryItems([{
+    id: 'one',
+    src: 'data:image/png;base64,abc',
+    title: 'Scene image',
+    detail: 'server scene image',
+    filename: 'scene.png',
+    createdAt: 1,
+  }]);
   assert.match(html, /Scene image/);
   assert.doesNotMatch(html, /imag[^e]/);
 });
