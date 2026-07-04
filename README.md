@@ -54,6 +54,36 @@ The package owns the shared `--bl-*` CSS variables and the theme selector helper
 
 Use `bindThemeSelect(select)` for client selectors and `setTheme(theme)` for direct theme changes. New colors should be added as CSS variables before clients depend on them.
 
+Deployments can add their own theme choices without changing this package:
+
+```ts
+import { registerThemeOptions } from '@bunnyland/ui-web/theme';
+
+registerThemeOptions([
+  { value: 'server-night', label: 'Server Night' },
+]);
+```
+
+Then serve CSS for the matching root class:
+
+```css
+:root.bl-theme-server-night {
+  color-scheme: dark;
+  --bl-bg: #101218;
+  --bl-surface: #202532;
+  --bl-text: #f0f4ff;
+  --bl-accent: #74c7ec;
+}
+```
+
+Static browser clients also read a `themes` array from deployment `config.json` and register
+those options automatically. Theme values must use lowercase letters, numbers, and hyphens so
+the value maps directly to `bl-theme-<value>`. Set `theme` in `config.json` to make one of
+those values the deployment default, or share a link with `?theme=<value>` to choose a theme
+from the URL.
+
+See [custom web themes](docs/admin/custom-web-themes.md) for the server-admin setup guide.
+
 ## Widgets
 
 The framework-neutral widget helpers are split by audience:

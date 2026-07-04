@@ -9,14 +9,19 @@ import {
   drainNarratedEvents,
   filterActions,
   imageCompletions,
+  initTheme,
   latestImageCompletion,
   normalizeBase,
   normalizeTheme,
   parseCharacterProjection,
   queuedCommandLabel,
+  registerThemeOption,
+  registerThemeOptions,
   socketUrl,
   bindThemeSelect,
   THEME_KEY,
+  themeFromSearch,
+  themeOptions,
 } from '../dist/index.js';
 import { renderGalleryItems } from '../dist/player-widgets.js';
 
@@ -29,6 +34,60 @@ test('API and theme helpers normalize shared client state', () => {
   assert.equal(socketUrl('https://server.test/api/', '/world/updates'), 'wss://server.test/api/world/updates');
   assert.equal(normalizeTheme('dark'), 'purple-blue-dark');
   assert.equal(normalizeTheme('nope'), 'purple-blue-dark');
+});
+
+test('server admins can register custom theme options', () => {
+  assert.deepEqual(registerThemeOption({ value: 'server-night', label: 'Server Night' }), {
+    value: 'server-night',
+    label: 'Server Night',
+  });
+  assert.equal(registerThemeOption({ value: '../bad', label: 'Bad' }), null);
+  assert.deepEqual(registerThemeOptions([{ value: 'server-day', label: 'Server Day' }]), [{
+    value: 'server-day',
+    label: 'Server Day',
+  }]);
+  assert.equal(normalizeTheme('server-night'), 'server-night');
+  assert.equal(themeOptions().some(option => option.value === 'server-day'), true);
+});
+
+test('config defaults and shared links can choose custom themes', () => {
+  registerThemeOptions([
+    { value: 'site-default', label: 'Site Default' },
+    { value: 'linked-theme', label: 'Linked Theme' },
+  ]);
+  assert.equal(themeFromSearch('?theme=linked-theme'), 'linked-theme');
+  assert.equal(themeFromSearch('?theme=missing-theme'), null);
+
+  const classes = new Set(['bl-theme-purple-blue-dark']);
+  const values = new Map();
+  const previousDocument = globalThis.document;
+  const previousLocalStorage = globalThis.localStorage;
+  globalThis.document = {
+    documentElement: {
+      classList: {
+        add: value => classes.add(value),
+        remove: value => classes.delete(value),
+        [Symbol.iterator]: function* iterator() { yield* classes; },
+      },
+      dataset: {},
+    },
+  };
+  globalThis.localStorage = {
+    getItem: key => values.get(key) || null,
+    setItem: (key, value) => values.set(key, value),
+  };
+  try {
+    assert.equal(initTheme(globalThis.document.documentElement, 'site-default', ''), 'site-default');
+    assert.equal(values.has(THEME_KEY), false);
+    assert.equal(globalThis.document.documentElement.dataset.theme, 'site-default');
+
+    assert.equal(initTheme(globalThis.document.documentElement, 'site-default', '?theme=linked-theme'), 'linked-theme');
+    assert.equal(values.get(THEME_KEY), 'linked-theme');
+    assert.equal(globalThis.document.documentElement.dataset.theme, 'linked-theme');
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.localStorage = previousLocalStorage;
+  }
 });
 
 test('theme select restores the stored theme on page load', () => {
@@ -61,6 +120,8 @@ test('theme select restores the stored theme on page load', () => {
     assert.equal(select.value, 'earth-light');
     assert.equal(globalThis.document.documentElement.dataset.theme, 'earth-light');
     assert.equal(classes.has('bl-theme-earth-light'), true);
+    registerThemeOption({ value: 'server-dusk', label: 'Server Dusk' });
+    assert.match(select.innerHTML, /server-dusk/);
     select.value = 'anime-dark';
     listeners.get('change')();
     assert.equal(values.get(THEME_KEY), 'anime-dark');
@@ -130,25 +191,46 @@ test('event and image helpers share player narration behavior', () => {
   assert.equal(drained.lines[0].kind, 'rejection');
 });
 
-test('browser asset globals stay compatible with static clients', () => {
+test('browser asset globals stay compatible with static clients', async () => {
+  const classes = new Set();
+  const values = new Map();
   const context = {
     atob: value => Buffer.from(value, 'base64').toString('binary'),
     btoa: value => Buffer.from(value, 'binary').toString('base64'),
     console,
     document: {
-      documentElement: { classList: { add() {}, remove() {}, [Symbol.iterator]: function* iterator() {} }, dataset: {} },
+      documentElement: {
+        classList: {
+          add: value => classes.add(value),
+          remove: value => classes.delete(value),
+          [Symbol.iterator]: function* iterator() { yield* classes; },
+        },
+        dataset: {},
+      },
       getElementById: () => null,
     },
-    fetch: async () => ({ ok: true, json: async () => ({}) }),
+    fetch: async () => ({
+      ok: true,
+      json: async () => ({
+        theme: 'asset-default',
+        themes: [
+          { value: 'asset-default', label: 'Asset Default' },
+          { value: 'asset-linked', label: 'Asset Linked' },
+        ],
+      }),
+    }),
     globalThis: null,
     history: { replaceState: () => {} },
     location: {
       href: 'http://example.test/index.html',
       origin: 'http://example.test',
       pathname: '/index.html',
-      search: '',
+      search: '?theme=asset-linked',
     },
-    localStorage: { getItem: () => null, setItem: () => {} },
+    localStorage: {
+      getItem: key => values.get(key) || null,
+      setItem: (key, value) => values.set(key, value),
+    },
     URL,
     URLSearchParams,
     window: null,
@@ -162,6 +244,10 @@ test('browser asset globals stay compatible with static clients', () => {
   assert.equal(typeof context.BunnylandUI.bindThemeSelect, 'function');
   assert.equal(typeof context.BunnylandApi.normalizeBase, 'function');
   assert.equal(typeof context.BunnylandPlay.filterActions, 'function');
+  await context.BunnylandUI.loadConfig();
+  assert.equal(context.BunnylandUI.currentTheme(), 'asset-linked');
+  assert.equal(classes.has('bl-theme-asset-linked'), true);
+  assert.equal(values.get(THEME_KEY), 'asset-linked');
 });
 
 test('gallery helpers render images with the correct spelling', () => {
