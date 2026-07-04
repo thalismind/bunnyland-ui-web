@@ -8,6 +8,8 @@ export interface ControlClaimLike {
   claimSecret?: string;
 }
 
+let playerAuthHeader = '';
+
 export function normalizeBase(url: string): string {
   return String(url || '').trim().replace(/\/$/, '');
 }
@@ -48,7 +50,7 @@ export function adminHeaders(auth: AdminAuth = {}, contentType = ''): Record<str
 
 export function claimHeaders(control: ControlClaimLike | null = null): Record<string, string> {
   return {
-    'Content-Type': 'application/json',
+    ...jsonHeaders(playerAuthHeader),
     ...(control?.claimSecret ? { 'X-Bunnyland-Claim-Secret': control.claimSecret } : {}),
   };
 }
@@ -63,9 +65,17 @@ export async function parseJsonResponse(res: Response): Promise<unknown> {
 }
 
 export async function sendJson(base: string, path: string, init: RequestInit = {}): Promise<unknown> {
-  const headers = new Headers(init.headers || jsonHeaders());
+  const headers = new Headers(init.headers || jsonHeaders(playerAuthHeader));
   if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
   return parseJsonResponse(await fetch(`${normalizeBase(base)}${path}`, { ...init, headers }));
+}
+
+export function setPlayerAuth(authHeader = ''): void {
+  playerAuthHeader = authHeader;
+}
+
+export function getPlayerAuth(): string {
+  return playerAuthHeader;
 }
 
 export async function sendAdmin(base: string, path: string, auth: AdminAuth = {}, init: RequestInit = {}): Promise<unknown> {

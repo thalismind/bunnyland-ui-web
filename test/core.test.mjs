@@ -6,8 +6,10 @@ import vm from 'node:vm';
 import {
   actionIcon,
   characterSheetHref,
+  claimHeaders,
   drainNarratedEvents,
   filterActions,
+  getPlayerAuth,
   imageCompletions,
   initTheme,
   latestImageCompletion,
@@ -17,6 +19,7 @@ import {
   queuedCommandLabel,
   registerThemeOption,
   registerThemeOptions,
+  setPlayerAuth,
   socketUrl,
   bindThemeSelect,
   THEME_KEY,
@@ -34,6 +37,19 @@ test('API and theme helpers normalize shared client state', () => {
   assert.equal(socketUrl('https://server.test/api/', '/world/updates'), 'wss://server.test/api/world/updates');
   assert.equal(normalizeTheme('dark'), 'purple-blue-dark');
   assert.equal(normalizeTheme('nope'), 'purple-blue-dark');
+});
+
+test('API helpers include player auth in claim headers', () => {
+  setPlayerAuth('Basic player-token');
+
+  assert.equal(getPlayerAuth(), 'Basic player-token');
+  assert.equal(claimHeaders({ claimSecret: 'claim-secret' }).Authorization, 'Basic player-token');
+  assert.equal(
+    claimHeaders({ claimSecret: 'claim-secret' })['X-Bunnyland-Claim-Secret'],
+    'claim-secret',
+  );
+
+  setPlayerAuth('');
 });
 
 test('server admins can register custom theme options', () => {
