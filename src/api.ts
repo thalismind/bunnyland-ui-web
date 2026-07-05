@@ -55,6 +55,17 @@ export function claimHeaders(control: ControlClaimLike | null = null): Record<st
   };
 }
 
+export function mergePlayerHeaders(headers: HeadersInit = {}): Headers {
+  const input = new Headers(headers);
+  const merged = new Headers(jsonHeaders(playerAuthHeader));
+  input.forEach((value, key) => merged.set(key, value));
+  const explicitAuth = input.get('Authorization');
+  if (playerAuthHeader && explicitAuth?.startsWith('Basic ') && explicitAuth !== playerAuthHeader) {
+    merged.set('Authorization', playerAuthHeader);
+  }
+  return merged;
+}
+
 export async function parseJsonResponse(res: Response): Promise<unknown> {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -65,7 +76,7 @@ export async function parseJsonResponse(res: Response): Promise<unknown> {
 }
 
 export async function sendJson(base: string, path: string, init: RequestInit = {}): Promise<unknown> {
-  const headers = new Headers(init.headers || jsonHeaders(playerAuthHeader));
+  const headers = mergePlayerHeaders(init.headers || {});
   if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
   return parseJsonResponse(await fetch(`${normalizeBase(base)}${path}`, { ...init, headers }));
 }

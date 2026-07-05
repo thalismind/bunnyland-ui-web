@@ -13,12 +13,14 @@ import {
   imageCompletions,
   initTheme,
   latestImageCompletion,
+  mergePlayerHeaders,
   normalizeBase,
   normalizeTheme,
   parseCharacterProjection,
   queuedCommandLabel,
   registerThemeOption,
   registerThemeOptions,
+  sendJson,
   setPlayerAuth,
   socketUrl,
   bindThemeSelect,
@@ -50,6 +52,40 @@ test('API helpers include player auth in claim headers', () => {
   );
 
   setPlayerAuth('');
+});
+
+test('API sendJson merges player auth into explicit headers', async () => {
+  const previousFetch = globalThis.fetch;
+  const calls = [];
+  setPlayerAuth('Basic player-token');
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, options });
+    return { ok: true, json: async () => ({ ok: true }) };
+  };
+  try {
+    const headers = mergePlayerHeaders({ 'X-Bunnyland-Claim-Secret': 'claim-secret' });
+    assert.equal(headers.get('Authorization'), 'Basic player-token');
+    assert.equal(headers.get('X-Bunnyland-Claim-Secret'), 'claim-secret');
+
+    const result = await sendJson('http://server.test/api/', '/world/character/c1', {
+      headers: { 'X-Bunnyland-Claim-Secret': 'claim-secret' },
+    });
+
+    assert.deepEqual(result, { ok: true });
+    assert.equal(calls[0].options.headers.get('Authorization'), 'Basic player-token');
+    assert.equal(calls[0].options.headers.get('X-Bunnyland-Claim-Secret'), 'claim-secret');
+
+    setPlayerAuth('Basic fresh-player-token');
+    const stale = mergePlayerHeaders({
+      Authorization: 'Basic stale-player-token',
+      'X-Bunnyland-Claim-Secret': 'claim-secret',
+    });
+    assert.equal(stale.get('Authorization'), 'Basic fresh-player-token');
+    assert.equal(stale.get('X-Bunnyland-Claim-Secret'), 'claim-secret');
+  } finally {
+    globalThis.fetch = previousFetch;
+    setPlayerAuth('');
+  }
 });
 
 test('server admins can register custom theme options', () => {
