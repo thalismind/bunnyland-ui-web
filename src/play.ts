@@ -704,6 +704,12 @@ function renderEventLine(data: Record<string, unknown>, { playerId = '', nameFor
     } else if (key.endsWith('_id')) {
       const name = nameFor(String(value));
       if (name) details.push(name);
+    } else if (key === 'facts' && Array.isArray(value)) {
+      details.push(...value.flatMap(fact => {
+        if (!fact || typeof fact !== 'object' || !('text' in fact)) return [];
+        const text = String(fact.text || '').trim();
+        return text ? [text] : [];
+      }));
     } else {
       details.push(`${key.replaceAll('_', ' ')} ${String(value)}`);
     }

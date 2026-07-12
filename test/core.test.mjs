@@ -241,6 +241,24 @@ test('event and image helpers share player narration behavior', () => {
   assert.equal(drained.lines.length, 1);
   assert.match(drained.lines[0].text, /too tired/);
   assert.equal(drained.lines[0].kind, 'rejection');
+
+  const inspected = drainNarratedEvents([{
+    data: {
+      event_type: 'EntityInspectedEvent',
+      event: {
+        event_id: 'event:inspect',
+        visibility: 'private',
+        actor_id: 'character:1',
+        name: 'Bun',
+        facts: [{ key: 'needs.hunger', text: 'You are not hungry.', detail: 30 }],
+      },
+    },
+  }], {
+    playerId: 'character:1',
+    nameFor: id => id === 'character:1' ? 'Bun' : id,
+  });
+  assert.match(inspected.lines[0].text, /You are not hungry\./);
+  assert.doesNotMatch(inspected.lines[0].text, /needs\.hunger|\[object Object\]/);
 });
 
 test('browser asset globals stay compatible with static clients', async () => {
