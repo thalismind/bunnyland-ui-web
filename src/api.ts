@@ -96,8 +96,18 @@ export async function sendAdmin(base: string, path: string, auth: AdminAuth = {}
   }));
 }
 
-export function socketUrl(base: string, path = '/world/updates'): string {
-  return `${normalizeBase(base).replace(/^http/, 'ws')}${path}`;
+export function socketUrl(base: string, path = '/world/updates', authHeader = ''): string {
+  const normalized = normalizeBase(base);
+  if (!authHeader.startsWith('Basic ')) return `${normalized.replace(/^http/, 'ws')}${path}`;
+  const url = new URL(`${normalized}${path}`, globalThis.location?.href);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  const decoded = globalThis.atob(authHeader.slice(6));
+  const separator = decoded.indexOf(':');
+  if (separator >= 0) {
+    url.username = decoded.slice(0, separator);
+    url.password = decoded.slice(separator + 1);
+  }
+  return url.toString();
 }
 
 export function mediaUrl(base: string, url: string): string {

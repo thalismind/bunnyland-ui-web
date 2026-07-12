@@ -1,4 +1,12 @@
-import { claimHeaders, mediaUrl, normalizeBase, sendJson } from './api';
+import {
+  claimHeaders,
+  type ControlClaimLike,
+  getPlayerAuth,
+  mediaUrl,
+  normalizeBase,
+  sendJson,
+  socketUrl,
+} from './api';
 import { storageGet, storageRemove, storageSet } from './widgets';
 
 export const IMAGE_AFFORDANCE = {
@@ -199,6 +207,253 @@ export interface ClaimOptions {
   clientIdPrefix?: string;
 }
 
+export type PlayerLiveState = 'connecting' | 'live' | 'fallback' | 'closed';
+
+export interface PlayerUpdateFrame {
+  type: 'ready' | 'event' | 'invalidate' | 'resync' | 'heartbeat';
+  data: Record<string, unknown>;
+}
+
+export interface PlayerUpdatesSocket {
+  close(code?: number): void;
+}
+
+interface WebSocketLike extends PlayerUpdatesSocket {
+  onopen: ((event?: unknown) => void) | null;
+  onmessage: ((event: { data?: unknown }) => void) | null;
+  onclose: ((event?: unknown) => void) | null;
+  onerror: ((event?: unknown) => void) | null;
+  send(data: string): void;
+}
+
+export interface OpenPlayerUpdatesOptions {
+  base: string;
+  characterId: string;
+  control?: ControlClaimLike | null;
+  onFrame: (frame: PlayerUpdateFrame) => void;
+  onOpen?: () => void;
+  onClose?: () => void;
+  onError?: () => void;
+  onAnyFrame?: () => void;
+  webSocketFactory?: (url: string) => WebSocketLike;
+}
+
+export interface PlayerLiveUpdates {
+  close(): void;
+  getState(): PlayerLiveState;
+}
+
+export interface CreatePlayerLiveUpdatesOptions {
+  base: string;
+  characterId: string;
+  control?: ControlClaimLike | null;
+  refresh: () => void | Promise<void>;
+  onFrame?: (frame: PlayerUpdateFrame) => void;
+  onState?: (state: PlayerLiveState) => void;
+  webSocketFactory?: (url: string) => WebSocketLike;
+  random?: () => number;
+}
+
+const PLAYER_FRAME_TYPES = new Set(['ready', 'event', 'invalidate', 'resync', 'heartbeat']);
+const FALLBACK_POLL_MS = 2000;
+const EVENT_REFRESH_MS = 150;
+const HEARTBEAT_TIMEOUT_MS = 70000;
+const RECONNECT_SECONDS = [1, 2, 4, 8, 16, 30];
+
+export function openPlayerUpdates(options: OpenPlayerUpdatesOptions): PlayerUpdatesSocket | null {
+  const factory = options.webSocketFactory || (
+    typeof globalThis.WebSocket === 'function'
+      ? (url: string): WebSocketLike => new globalThis.WebSocket(url) as unknown as WebSocketLike
+      : null
+  );
+  if (!factory) return null;
+  const path = `/world/character/${encodeURIComponent(options.characterId)}/updates`;
+  const socket = factory(socketUrl(options.base, path, getPlayerAuth()));
+  socket.onopen = () => {
+    socket.send(JSON.stringify({
+      type: 'authenticate',
+      data: {
+        claim_id: options.control?.claimId || null,
+        claim_secret: options.control?.claimSecret || null,
+      },
+    }));
+    options.onOpen?.();
+  };
+  socket.onmessage = event => {
+    options.onAnyFrame?.();
+    let frame: unknown;
+    try {
+      frame = JSON.parse(String(event.data ?? ''));
+    } catch (_err) {
+      return;
+    }
+    if (!frame || typeof frame !== 'object') return;
+    const candidate = frame as { type?: unknown; data?: unknown };
+    if (!PLAYER_FRAME_TYPES.has(String(candidate.type)) || !candidate.data || typeof candidate.data !== 'object') return;
+    options.onFrame(candidate as PlayerUpdateFrame);
+  };
+  socket.onclose = () => options.onClose?.();
+  socket.onerror = () => options.onError?.();
+  return socket;
+}
+
+export function createPlayerLiveUpdates(options: CreatePlayerLiveUpdatesOptions): PlayerLiveUpdates {
+  let closed = false;
+  let state: PlayerLiveState = 'connecting';
+  let socket: PlayerUpdatesSocket | null = null;
+  let generation = 0;
+  let reconnectAttempt = 0;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let pollTimer: ReturnType<typeof setInterval> | null = null;
+  let heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
+  let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+  let refreshing = false;
+  let refreshPending = false;
+  const random = options.random || Math.random;
+
+  const setState = (next: PlayerLiveState): void => {
+    if (state === next) return;
+    state = next;
+    options.onState?.(next);
+  };
+  const clearHeartbeat = (): void => {
+    if (heartbeatTimer != null) clearTimeout(heartbeatTimer);
+    heartbeatTimer = null;
+  };
+  const runRefresh = async (): Promise<void> => {
+    refreshTimer = null;
+    if (closed) return;
+    if (refreshing) {
+      refreshPending = true;
+      return;
+    }
+    refreshing = true;
+    try {
+      await options.refresh();
+    } catch (_err) {
+      // A failed fallback request must not stop later polls or live event refreshes.
+    } finally {
+      refreshing = false;
+      if (refreshPending && !closed) {
+        refreshPending = false;
+        void runRefresh();
+      }
+    }
+  };
+  const requestRefresh = (delay = 0): void => {
+    if (closed) return;
+    if (refreshing) {
+      refreshPending = true;
+      return;
+    }
+    if (refreshTimer != null) return;
+    refreshTimer = setTimeout(() => { void runRefresh(); }, delay);
+  };
+  const stopPolling = (): void => {
+    if (pollTimer != null) clearInterval(pollTimer);
+    pollTimer = null;
+  };
+  const startPolling = (): void => {
+    if (closed || pollTimer != null) return;
+    requestRefresh();
+    pollTimer = setInterval(() => requestRefresh(), FALLBACK_POLL_MS);
+  };
+  const scheduleHeartbeat = (token: number): void => {
+    clearHeartbeat();
+    heartbeatTimer = setTimeout(() => {
+      if (closed || token !== generation) return;
+      const stale = socket;
+      socket = null;
+      generation += 1;
+      stale?.close();
+      disconnected();
+    }, HEARTBEAT_TIMEOUT_MS);
+  };
+  const scheduleReconnect = (): void => {
+    if (closed || reconnectTimer != null) return;
+    const seconds = RECONNECT_SECONDS[Math.min(reconnectAttempt, RECONNECT_SECONDS.length - 1)];
+    reconnectAttempt += 1;
+    const delay = seconds * 1000 * (0.8 + random() * 0.4);
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      connect();
+    }, delay);
+  };
+  const disconnected = (): void => {
+    if (closed) return;
+    clearHeartbeat();
+    setState('fallback');
+    startPolling();
+    scheduleReconnect();
+  };
+  const connect = (): void => {
+    if (closed) return;
+    const token = ++generation;
+    setState('connecting');
+    startPolling();
+    const opened = openPlayerUpdates({
+      ...options,
+      onOpen: () => {
+        if (!closed && token === generation) scheduleHeartbeat(token);
+      },
+      onAnyFrame: () => {
+        if (!closed && token === generation) scheduleHeartbeat(token);
+      },
+      onFrame: frame => {
+        if (closed || token !== generation) return;
+        options.onFrame?.(frame);
+        if (frame.type === 'ready') {
+          reconnectAttempt = 0;
+          stopPolling();
+          setState('live');
+        } else if (frame.type !== 'heartbeat') {
+          requestRefresh(EVENT_REFRESH_MS);
+        }
+      },
+      onClose: () => {
+        if (closed || token !== generation) return;
+        socket = null;
+        disconnected();
+      },
+      onError: () => {
+        if (closed || token !== generation) return;
+        const failed = socket;
+        socket = null;
+        generation += 1;
+        failed?.close();
+        disconnected();
+      },
+    });
+    if (closed || token !== generation) {
+      opened?.close();
+      return;
+    }
+    socket = opened;
+    if (!opened) disconnected();
+  };
+
+  options.onState?.(state);
+  connect();
+  return {
+    close(): void {
+      if (closed) return;
+      closed = true;
+      generation += 1;
+      if (reconnectTimer != null) clearTimeout(reconnectTimer);
+      if (refreshTimer != null) clearTimeout(refreshTimer);
+      reconnectTimer = null;
+      refreshTimer = null;
+      stopPolling();
+      clearHeartbeat();
+      const current = socket;
+      socket = null;
+      current?.close();
+      setState('closed');
+    },
+    getState: () => state,
+  };
+}
+
 export function randomClientId(prefix = 'web'): string {
   if (typeof globalThis.crypto?.randomUUID === 'function') return crypto.randomUUID();
   const bytes = new Uint8Array(16);
@@ -312,6 +567,20 @@ export async function cancelQueuedCommand(base: string, characterId: string, com
 
 export async function fetchRecentEvents(base: string): Promise<unknown[]> {
   const data = await sendJson(base, '/world/events/recent') as { events?: unknown[] };
+  return Array.isArray(data.events) ? data.events : [];
+}
+
+export async function fetchCharacterRecentEvents(
+  base: string,
+  characterId: string,
+  control: ControlClaimLike | null = null,
+): Promise<unknown[]> {
+  const query = control?.claimId ? `?claim_id=${encodeURIComponent(control.claimId)}` : '';
+  const data = await sendJson(
+    base,
+    `/world/character/${encodeURIComponent(characterId)}/events/recent${query}`,
+    { headers: claimHeaders(control) },
+  ) as { events?: unknown[] };
   return Array.isArray(data.events) ? data.events : [];
 }
 

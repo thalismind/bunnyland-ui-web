@@ -7,6 +7,7 @@ import {
   actionIcon,
   characterSheetHref,
   claimHeaders,
+  createPlayerLiveUpdates,
   drainNarratedEvents,
   filterActions,
   getPlayerAuth,
@@ -16,6 +17,7 @@ import {
   mergePlayerHeaders,
   normalizeBase,
   normalizeTheme,
+  openPlayerUpdates,
   parseCharacterProjection,
   queuedCommandLabel,
   registerThemeOption,
@@ -52,6 +54,110 @@ test('API helpers include player auth in claim headers', () => {
   );
 
   setPlayerAuth('');
+});
+
+class FakePlayerSocket {
+  constructor(url) {
+    this.url = url;
+    this.sent = [];
+    this.closed = false;
+    this.onopen = null;
+    this.onmessage = null;
+    this.onclose = null;
+    this.onerror = null;
+  }
+
+  send(data) { this.sent.push(data); }
+  close() { this.closed = true; }
+  open() { this.onopen?.(); }
+  message(frame) { this.onmessage?.({ data: JSON.stringify(frame) }); }
+  disconnect() { this.onclose?.(); }
+}
+
+const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+
+test('player update transport authenticates in the first frame without URL secrets', () => {
+  setPlayerAuth('');
+  let socket;
+  const frames = [];
+  const opened = openPlayerUpdates({
+    base: 'https://server.test/api',
+    characterId: 'character:1',
+    control: { claimId: 'claim-1', claimSecret: 'top-secret' },
+    webSocketFactory: url => (socket = new FakePlayerSocket(url)),
+    onFrame: frame => frames.push(frame),
+  });
+
+  socket.open();
+  assert.equal(opened, socket);
+  assert.equal(socket.url, 'wss://server.test/api/world/character/character%3A1/updates');
+  assert.doesNotMatch(socket.url, /claim-1|top-secret/);
+  assert.deepEqual(JSON.parse(socket.sent[0]), {
+    type: 'authenticate',
+    data: { claim_id: 'claim-1', claim_secret: 'top-secret' },
+  });
+  socket.message({ type: 'mystery', data: {} });
+  socket.message({ type: 'event', data: { event_type: 'Moved' } });
+  assert.equal(frames.length, 1);
+});
+
+test('live coordinator stops polling at ready and resumes immediately on disconnect', async () => {
+  const sockets = [];
+  const states = [];
+  let refreshes = 0;
+  const live = createPlayerLiveUpdates({
+    base: 'http://server.test',
+    characterId: 'character:1',
+    refresh: () => { refreshes += 1; },
+    onState: state => states.push(state),
+    webSocketFactory: url => {
+      const socket = new FakePlayerSocket(url);
+      sockets.push(socket);
+      return socket;
+    },
+    random: () => 0.5,
+  });
+
+  sockets[0].open();
+  await wait(20);
+  assert.equal(refreshes, 1);
+  sockets[0].message({ type: 'ready', data: { character_id: 'character:1', world_epoch: 1 } });
+  await wait(2050);
+  assert.equal(refreshes, 1);
+  assert.equal(live.getState(), 'live');
+  sockets[0].disconnect();
+  await wait(20);
+  assert.equal(refreshes, 2);
+  assert.equal(live.getState(), 'fallback');
+  live.close();
+  assert.equal(live.getState(), 'closed');
+  assert.deepEqual(states.slice(0, 3), ['connecting', 'live', 'fallback']);
+});
+
+test('live coordinator coalesces bursts and serializes a follow-up refresh', async () => {
+  let socket;
+  let releaseFirst;
+  const calls = [];
+  const live = createPlayerLiveUpdates({
+    base: 'http://server.test',
+    characterId: 'character:1',
+    refresh: () => {
+      calls.push(calls.length + 1);
+      if (calls.length === 1) return new Promise(resolve => { releaseFirst = resolve; });
+    },
+    webSocketFactory: url => (socket = new FakePlayerSocket(url)),
+  });
+  socket.open();
+  await wait(20);
+  socket.message({ type: 'ready', data: { character_id: 'character:1', world_epoch: 1 } });
+  socket.message({ type: 'event', data: {} });
+  socket.message({ type: 'invalidate', data: { world_epoch: 2 } });
+  socket.message({ type: 'resync', data: { world_epoch: 2 } });
+  releaseFirst();
+  await wait(200);
+
+  assert.deepEqual(calls, [1, 2]);
+  live.close();
 });
 
 test('API sendJson merges player auth into explicit headers', async () => {
@@ -314,6 +420,7 @@ test('browser asset globals stay compatible with static clients', async () => {
   assert.equal(typeof context.BunnylandUI.bindThemeSelect, 'function');
   assert.equal(typeof context.BunnylandApi.normalizeBase, 'function');
   assert.equal(typeof context.BunnylandPlay.filterActions, 'function');
+  assert.equal(typeof context.BunnylandPlay.createPlayerLiveUpdates, 'function');
   await context.BunnylandUI.loadConfig();
   assert.equal(context.BunnylandUI.currentTheme(), 'asset-linked');
   assert.equal(classes.has('bl-theme-asset-linked'), true);
