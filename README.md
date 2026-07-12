@@ -96,6 +96,20 @@ Framework-specific UI packages can wrap these behaviors in components without du
 
 Player clients should favor contextual, rich controls for interacting with the current room, visible entities, exits, inventory, queued actions, and images. Admin clients should favor detailed inspection and editing controls such as structured fields, sliders, selectors, tag editors, and lower-level component data. Keep those surfaces separate when adding reusable widgets.
 
+## Player live updates and disclosed facts
+
+`@bunnyland/ui-web/play` owns the shared remote-player update coordinator. It authenticates
+the character WebSocket in the first frame so claim secrets never appear in URLs, coalesces
+bursts into serialized refreshes, reconnects with backoff, and resumes the character-scoped
+recent-event fallback while disconnected. Use one coordinator per claimed character rather
+than giving each panel its own socket or polling loop.
+
+Player activity renderers understand serialized `facts` entries with stable `key`, `text`,
+and numeric `detail`. Render the provided text in server order; do not reinterpret component
+state or apply a second client-side cutoff. Action controls likewise consume the serialized
+registry `actions` and `target_groups`. Missing metadata means an empty/disabled action state,
+not a static browser verb catalogue.
+
 ## Storybook
 
 A component storybook renders the shared toolbar, theme selector, form controls, and widget
