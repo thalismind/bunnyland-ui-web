@@ -160,6 +160,57 @@ test('live coordinator coalesces bursts and serializes a follow-up refresh', asy
   live.close();
 });
 
+test('live coordinator deduplicates events and refreshes after stream gaps', async () => {
+  let socket;
+  let refreshes = 0;
+  const frames = [];
+  const live = createPlayerLiveUpdates({
+    base: 'http://server.test',
+    characterId: 'character:1',
+    refresh: () => { refreshes += 1; },
+    onFrame: frame => frames.push(frame),
+    webSocketFactory: url => (socket = new FakePlayerSocket(url)),
+  });
+  socket.open();
+  await wait(20);
+  socket.message({
+    type: 'ready',
+    data: { character_id: 'character:1', world_epoch: 1 },
+    protocol_version: 1,
+    stream_sequence: 1,
+  });
+  socket.message({
+    type: 'event',
+    data: { event_type: 'Moved' },
+    protocol_version: 1,
+    stream_sequence: 2,
+    event_id: 'event-1',
+  });
+  socket.message({
+    type: 'event',
+    data: { event_type: 'Moved' },
+    protocol_version: 1,
+    stream_sequence: 3,
+    event_id: 'event-1',
+  });
+  socket.message({
+    type: 'event',
+    data: { event_type: 'Spoke' },
+    protocol_version: 1,
+    stream_sequence: 5,
+    event_id: 'event-2',
+  });
+  await wait(200);
+
+  assert.deepEqual(frames.map(frame => frame.event_id || frame.type), [
+    'ready',
+    'event-1',
+    'event-2',
+  ]);
+  assert.equal(refreshes, 2);
+  live.close();
+});
+
 test('API sendJson merges player auth into explicit headers', async () => {
   const previousFetch = globalThis.fetch;
   const calls = [];

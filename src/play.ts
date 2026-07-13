@@ -212,6 +212,13 @@ export type PlayerLiveState = 'connecting' | 'live' | 'fallback' | 'closed';
 export interface PlayerUpdateFrame {
   type: 'ready' | 'event' | 'invalidate' | 'resync' | 'heartbeat';
   data: Record<string, unknown>;
+  world_id?: string;
+  protocol_version?: number;
+  projection_version?: number;
+  world_epoch?: number;
+  stream_sequence?: number;
+  event_id?: string | null;
+  causal_command_id?: string | null;
 }
 
 export interface PlayerUpdatesSocket {
@@ -259,6 +266,7 @@ const FALLBACK_POLL_MS = 2000;
 const EVENT_REFRESH_MS = 150;
 const HEARTBEAT_TIMEOUT_MS = 70000;
 const RECONNECT_SECONDS = [1, 2, 4, 8, 16, 30];
+const SEEN_EVENT_LIMIT = 512;
 
 export function openPlayerUpdates(options: OpenPlayerUpdatesOptions): PlayerUpdatesSocket | null {
   const factory = options.webSocketFactory || (
@@ -309,6 +317,9 @@ export function createPlayerLiveUpdates(options: CreatePlayerLiveUpdatesOptions)
   let refreshTimer: ReturnType<typeof setTimeout> | null = null;
   let refreshing = false;
   let refreshPending = false;
+  let lastStreamSequence = 0;
+  const seenEventIds = new Set<string>();
+  const seenEventOrder: string[] = [];
   const random = options.random || Math.random;
 
   const setState = (next: PlayerLiveState): void => {
@@ -389,6 +400,7 @@ export function createPlayerLiveUpdates(options: CreatePlayerLiveUpdatesOptions)
   const connect = (): void => {
     if (closed) return;
     const token = ++generation;
+    lastStreamSequence = 0;
     setState('connecting');
     startPolling();
     const opened = openPlayerUpdates({
@@ -401,11 +413,28 @@ export function createPlayerLiveUpdates(options: CreatePlayerLiveUpdatesOptions)
       },
       onFrame: frame => {
         if (closed || token !== generation) return;
+        const sequence = Number(frame.stream_sequence || 0);
+        const sequenceGap = sequence > 0 && lastStreamSequence > 0
+          && sequence !== lastStreamSequence + 1;
+        if (sequence > 0) lastStreamSequence = sequence;
+
+        const eventId = typeof frame.event_id === 'string' ? frame.event_id : '';
+        if (eventId && seenEventIds.has(eventId)) return;
+        if (eventId) {
+          seenEventIds.add(eventId);
+          seenEventOrder.push(eventId);
+          if (seenEventOrder.length > SEEN_EVENT_LIMIT) {
+            seenEventIds.delete(seenEventOrder.shift() as string);
+          }
+        }
+
         options.onFrame?.(frame);
         if (frame.type === 'ready') {
           reconnectAttempt = 0;
           stopPolling();
           setState('live');
+        } else if (frame.type === 'resync' || sequenceGap) {
+          requestRefresh();
         } else if (frame.type !== 'heartbeat') {
           requestRefresh(EVENT_REFRESH_MS);
         }

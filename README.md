@@ -101,8 +101,10 @@ Player clients should favor contextual, rich controls for interacting with the c
 `@bunnyland/ui-web/play` owns the shared remote-player update coordinator. It authenticates
 the character WebSocket in the first frame so claim secrets never appear in URLs, coalesces
 bursts into serialized refreshes, reconnects with backoff, and resumes the character-scoped
-recent-event fallback while disconnected. Use one coordinator per claimed character rather
-than giving each panel its own socket or polling loop.
+recent-event fallback while disconnected. It deduplicates at-least-once event delivery by
+`event_id`, detects `stream_sequence` gaps, and refreshes the character projection after a
+gap or `resync`. Use one coordinator per claimed character rather than giving each panel its
+own socket or polling loop.
 
 Player activity renderers understand serialized `facts` entries with stable `key`, `text`,
 and numeric `detail`. Render the provided text in server order; do not reinterpret component
