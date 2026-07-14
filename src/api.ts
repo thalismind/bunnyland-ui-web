@@ -1,6 +1,5 @@
 export interface AdminAuth {
   authorization?: string;
-  secret?: string;
 }
 
 export interface ControlClaimLike {
@@ -28,23 +27,16 @@ export function setServerInUrl(base: string, href = globalThis.location?.href ||
 }
 
 export function jsonHeaders(authHeader = ''): Record<string, string> {
-  if (authHeader && authHeader.startsWith('Token ')) {
-    return {
-      'Content-Type': 'application/json',
-      'X-Bunnyland-Admin-Secret': authHeader.slice(6),
-    };
-  }
   return {
     'Content-Type': 'application/json',
-    ...(authHeader ? { Authorization: authHeader } : {}),
+    ...(authHeader.startsWith('Bearer ') ? { Authorization: authHeader } : {}),
   };
 }
 
 export function adminHeaders(auth: AdminAuth = {}, contentType = ''): Record<string, string> {
   const headers: Record<string, string> = {};
   if (contentType) headers['Content-Type'] = contentType;
-  if (auth.secret) headers['X-Bunnyland-Admin-Secret'] = auth.secret;
-  if (auth.authorization) headers.Authorization = auth.authorization;
+  if (auth.authorization?.startsWith('Bearer ')) headers.Authorization = auth.authorization;
   return headers;
 }
 
@@ -56,11 +48,8 @@ export function claimHeaders(control: ControlClaimLike | null = null): Record<st
 }
 
 export function mergePlayerHeaders(headers: HeadersInit = {}): Headers {
-  const input = new Headers(headers);
-  const merged = new Headers(jsonHeaders(playerAuthHeader));
-  input.forEach((value, key) => merged.set(key, value));
-  const explicitAuth = input.get('Authorization');
-  if (playerAuthHeader && explicitAuth?.startsWith('Basic ') && explicitAuth !== playerAuthHeader) {
+  const merged = new Headers(headers);
+  if (playerAuthHeader.startsWith('Bearer ')) {
     merged.set('Authorization', playerAuthHeader);
   }
   return merged;
@@ -78,11 +67,38 @@ export async function parseJsonResponse(res: Response): Promise<unknown> {
 export async function sendJson(base: string, path: string, init: RequestInit = {}): Promise<unknown> {
   const headers = mergePlayerHeaders(init.headers || {});
   if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
-  return parseJsonResponse(await fetch(`${normalizeBase(base)}${path}`, { ...init, headers }));
+  return parseJsonResponse(await fetch(`${normalizeBase(base)}${path}`, {
+    ...init,
+    headers,
+    credentials: 'include',
+  }));
+}
+
+export async function login(base: string, username: string, password: string): Promise<unknown> {
+  const pageLocation = globalThis.location;
+  if (!pageLocation || new URL(normalizeBase(base) || '/', pageLocation.href).origin !== pageLocation.origin) {
+    throw new Error('Refusing to send Bunnyland credentials to a different origin');
+  }
+  return sendJson(base, '/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ username, password, delivery: 'cookie' }),
+  });
+}
+
+export async function authMe(base: string): Promise<unknown> {
+  return sendJson(base, '/auth/me');
+}
+
+export async function rotateAuth(base: string): Promise<unknown> {
+  return sendJson(base, '/auth/rotate', { method: 'POST' });
+}
+
+export async function logout(base: string): Promise<unknown> {
+  return sendJson(base, '/auth/logout', { method: 'POST' });
 }
 
 export function setPlayerAuth(authHeader = ''): void {
-  playerAuthHeader = authHeader;
+  playerAuthHeader = authHeader.startsWith('Bearer ') ? authHeader : '';
 }
 
 export function getPlayerAuth(): string {
@@ -93,21 +109,13 @@ export async function sendAdmin(base: string, path: string, auth: AdminAuth = {}
   return parseJsonResponse(await fetch(`${normalizeBase(base)}${path}`, {
     ...init,
     headers: adminHeaders(auth),
+    credentials: 'include',
   }));
 }
 
-export function socketUrl(base: string, path = '/world/updates', authHeader = ''): string {
+export function socketUrl(base: string, path = '/world/updates', _authHeader = ''): string {
   const normalized = normalizeBase(base);
-  if (!authHeader.startsWith('Basic ')) return `${normalized.replace(/^http/, 'ws')}${path}`;
-  const url = new URL(`${normalized}${path}`, globalThis.location?.href);
-  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-  const decoded = globalThis.atob(authHeader.slice(6));
-  const separator = decoded.indexOf(':');
-  if (separator >= 0) {
-    url.username = decoded.slice(0, separator);
-    url.password = decoded.slice(separator + 1);
-  }
-  return url.toString();
+  return `${normalized.replace(/^http/, 'ws')}${path}`;
 }
 
 export function mediaUrl(base: string, url: string): string {

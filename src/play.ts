@@ -281,6 +281,7 @@ export function openPlayerUpdates(options: OpenPlayerUpdatesOptions): PlayerUpda
     socket.send(JSON.stringify({
       type: 'authenticate',
       data: {
+        token: getPlayerAuth().startsWith('Bearer ') ? getPlayerAuth().slice(7) : null,
         claim_id: options.control?.claimId || null,
         claim_secret: options.control?.claimSecret || null,
       },

@@ -14,6 +14,7 @@ import {
   imageCompletions,
   initTheme,
   latestImageCompletion,
+  login,
   mergePlayerHeaders,
   normalizeBase,
   normalizeTheme,
@@ -44,16 +45,40 @@ test('API and theme helpers normalize shared client state', () => {
 });
 
 test('API helpers include player auth in claim headers', () => {
-  setPlayerAuth('Basic player-token');
+  setPlayerAuth('Bearer player-token');
 
-  assert.equal(getPlayerAuth(), 'Basic player-token');
-  assert.equal(claimHeaders({ claimSecret: 'claim-secret' }).Authorization, 'Basic player-token');
+  assert.equal(getPlayerAuth(), 'Bearer player-token');
+  assert.equal(claimHeaders({ claimSecret: 'claim-secret' }).Authorization, 'Bearer player-token');
   assert.equal(
     claimHeaders({ claimSecret: 'claim-secret' })['X-Bunnyland-Claim-Secret'],
     'claim-secret',
   );
 
   setPlayerAuth('');
+});
+
+test('shared login refuses to submit browser credentials cross-origin', async () => {
+  const previousLocation = globalThis.location;
+  const previousFetch = globalThis.fetch;
+  let fetched = false;
+  globalThis.location = {
+    href: 'https://sandbox.example/index.html',
+    origin: 'https://sandbox.example',
+  };
+  globalThis.fetch = async () => {
+    fetched = true;
+    return new Response('{}');
+  };
+  try {
+    await assert.rejects(
+      login('https://phishing.example/api', 'player', 'secret'),
+      /different origin/,
+    );
+    assert.equal(fetched, false);
+  } finally {
+    globalThis.location = previousLocation;
+    globalThis.fetch = previousFetch;
+  }
 });
 
 class FakePlayerSocket {
@@ -94,7 +119,7 @@ test('player update transport authenticates in the first frame without URL secre
   assert.doesNotMatch(socket.url, /claim-1|top-secret/);
   assert.deepEqual(JSON.parse(socket.sent[0]), {
     type: 'authenticate',
-    data: { claim_id: 'claim-1', claim_secret: 'top-secret' },
+    data: { token: null, claim_id: 'claim-1', claim_secret: 'top-secret' },
   });
   socket.message({ type: 'mystery', data: {} });
   socket.message({ type: 'event', data: { event_type: 'Moved' } });
@@ -214,14 +239,14 @@ test('live coordinator deduplicates events and refreshes after stream gaps', asy
 test('API sendJson merges player auth into explicit headers', async () => {
   const previousFetch = globalThis.fetch;
   const calls = [];
-  setPlayerAuth('Basic player-token');
+  setPlayerAuth('Bearer player-token');
   globalThis.fetch = async (url, options) => {
     calls.push({ url, options });
     return { ok: true, json: async () => ({ ok: true }) };
   };
   try {
     const headers = mergePlayerHeaders({ 'X-Bunnyland-Claim-Secret': 'claim-secret' });
-    assert.equal(headers.get('Authorization'), 'Basic player-token');
+    assert.equal(headers.get('Authorization'), 'Bearer player-token');
     assert.equal(headers.get('X-Bunnyland-Claim-Secret'), 'claim-secret');
 
     const result = await sendJson('http://server.test/api/', '/world/character/c1', {
@@ -229,15 +254,15 @@ test('API sendJson merges player auth into explicit headers', async () => {
     });
 
     assert.deepEqual(result, { ok: true });
-    assert.equal(calls[0].options.headers.get('Authorization'), 'Basic player-token');
+    assert.equal(calls[0].options.headers.get('Authorization'), 'Bearer player-token');
     assert.equal(calls[0].options.headers.get('X-Bunnyland-Claim-Secret'), 'claim-secret');
 
-    setPlayerAuth('Basic fresh-player-token');
+    setPlayerAuth('Bearer fresh-player-token');
     const stale = mergePlayerHeaders({
-      Authorization: 'Basic stale-player-token',
+      Authorization: 'Bearer stale-player-token',
       'X-Bunnyland-Claim-Secret': 'claim-secret',
     });
-    assert.equal(stale.get('Authorization'), 'Basic fresh-player-token');
+    assert.equal(stale.get('Authorization'), 'Bearer fresh-player-token');
     assert.equal(stale.get('X-Bunnyland-Claim-Secret'), 'claim-secret');
   } finally {
     globalThis.fetch = previousFetch;
