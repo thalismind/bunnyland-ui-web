@@ -13,14 +13,28 @@ export function normalizeBase(url: string): string {
   return String(url || '').trim().replace(/\/$/, '');
 }
 
+export function assertSameOriginBase(
+  base: string,
+  pageLocation = globalThis.location,
+): string {
+  const normalized = normalizeBase(base);
+  if (!pageLocation) return normalized;
+  const resolved = new URL(normalized || '/', pageLocation.href);
+  if (resolved.origin !== pageLocation.origin) {
+    throw new Error('Bunnyland browser connections must use the page origin');
+  }
+  return normalized;
+}
+
 export function serverFromUrl(search = globalThis.location?.search || ''): string {
-  return new URLSearchParams(search).get('server') || '';
+  const configured = new URLSearchParams(search).get('server') || '';
+  return configured ? assertSameOriginBase(configured) : '';
 }
 
 export function setServerInUrl(base: string, href = globalThis.location?.href || ''): void {
   if (!href || !globalThis.history) return;
   const url = new URL(href);
-  const normalized = normalizeBase(base);
+  const normalized = assertSameOriginBase(base);
   if (normalized) url.searchParams.set('server', normalized);
   else url.searchParams.delete('server');
   history.replaceState(null, '', url);
@@ -67,7 +81,7 @@ export async function parseJsonResponse(res: Response): Promise<unknown> {
 export async function sendJson(base: string, path: string, init: RequestInit = {}): Promise<unknown> {
   const headers = mergePlayerHeaders(init.headers || {});
   if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
-  return parseJsonResponse(await fetch(`${normalizeBase(base)}${path}`, {
+  return parseJsonResponse(await fetch(`${assertSameOriginBase(base)}${path}`, {
     ...init,
     headers,
     credentials: 'include',
@@ -75,10 +89,7 @@ export async function sendJson(base: string, path: string, init: RequestInit = {
 }
 
 export async function login(base: string, username: string, password: string): Promise<unknown> {
-  const pageLocation = globalThis.location;
-  if (!pageLocation || new URL(normalizeBase(base) || '/', pageLocation.href).origin !== pageLocation.origin) {
-    throw new Error('Refusing to send Bunnyland credentials to a different origin');
-  }
+  assertSameOriginBase(base);
   return sendJson(base, '/auth/login', {
     method: 'POST',
     body: JSON.stringify({ username, password, delivery: 'cookie' }),
@@ -106,29 +117,36 @@ export function getPlayerAuth(): string {
 }
 
 export async function sendAdmin(base: string, path: string, auth: AdminAuth = {}, init: RequestInit = {}): Promise<unknown> {
-  return parseJsonResponse(await fetch(`${normalizeBase(base)}${path}`, {
+  return parseJsonResponse(await fetch(`${assertSameOriginBase(base)}${path}`, {
     ...init,
     headers: adminHeaders(auth),
     credentials: 'include',
   }));
 }
 
-export function socketUrl(base: string, path = '/world/updates', _authHeader = ''): string {
-  const normalized = normalizeBase(base);
-  return `${normalized.replace(/^http/, 'ws')}${path}`;
+export function socketUrl(base: string, path = '/admin/world/updates', _authHeader = ''): string {
+  const normalized = assertSameOriginBase(base);
+  const httpUrl = globalThis.location
+    ? new URL(`${normalized}${path}`, globalThis.location.href).href
+    : `${normalized}${path}`;
+  return httpUrl.replace(/^http/, 'ws');
 }
 
 export function mediaUrl(base: string, url: string): string {
   if (!url) return '';
-  if (/^(https?:|data:)/.test(url)) return url;
-  return `${normalizeBase(base)}${url}`;
+  if (url.startsWith('data:')) return url;
+  if (/^https?:/.test(url)) {
+    assertSameOriginBase(url);
+    return url;
+  }
+  return `${assertSameOriginBase(base)}${url}`;
 }
 
 export async function requestSceneImage(base: string, characterId: string, control: ControlClaimLike | null = null): Promise<unknown> {
   const params = new URLSearchParams();
   if (control?.claimId) params.set('claim_id', control.claimId);
   const query = params.toString();
-  return sendJson(base, `/world/character/${encodeURIComponent(characterId)}/scene-image${query ? `?${query}` : ''}`, {
+  return sendJson(base, `/play/world/character/${encodeURIComponent(characterId)}/scene-image${query ? `?${query}` : ''}`, {
     method: 'POST',
     headers: claimHeaders(control),
   });

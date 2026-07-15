@@ -1,9 +1,9 @@
 import {
+  assertSameOriginBase,
   claimHeaders,
   type ControlClaimLike,
   getPlayerAuth,
   mediaUrl,
-  normalizeBase,
   sendJson,
   socketUrl,
 } from './api';
@@ -275,7 +275,7 @@ export function openPlayerUpdates(options: OpenPlayerUpdatesOptions): PlayerUpda
       : null
   );
   if (!factory) return null;
-  const path = `/world/character/${encodeURIComponent(options.characterId)}/updates`;
+  const path = `/play/world/character/${encodeURIComponent(options.characterId)}/updates`;
   const socket = factory(socketUrl(options.base, path, getPlayerAuth()));
   socket.onopen = () => {
     socket.send(JSON.stringify({
@@ -538,13 +538,13 @@ export function clearClaimControl(key: string, characterId: string): void {
 }
 
 export async function fetchCharacters(base: string): Promise<CharacterSummary[]> {
-  const data = await sendJson(base, '/world/characters') as { characters?: unknown[] };
+  const data = await sendJson(base, '/play/world/characters') as { characters?: unknown[] };
   return parseCharacterList(data).characters;
 }
 
 export async function claimCharacter(base: string, characterId: string, storageKey: string, options: ClaimOptions = {}): Promise<ControlClaim> {
   const stored = storedClaimControl(storageKey, characterId);
-  const data = await sendJson(base, '/world/controllers/web/claim', {
+  const data = await sendJson(base, '/play/world/controllers/web/claim', {
     method: 'POST',
     headers: claimHeaders(stored),
     body: JSON.stringify({
@@ -563,20 +563,20 @@ export async function claimCharacter(base: string, characterId: string, storageK
 
 export async function fetchCharacterProjection(base: string, characterId: string, control: ControlClaim | null = null): Promise<CharacterProjection> {
   const query = control?.claimId ? `?claim_id=${encodeURIComponent(control.claimId)}` : '';
-  return parseCharacterProjection(await sendJson(base, `/world/character/${encodeURIComponent(characterId)}${query}`, {
+  return parseCharacterProjection(await sendJson(base, `/play/world/character/${encodeURIComponent(characterId)}${query}`, {
     headers: claimHeaders(control),
   })) as CharacterProjection;
 }
 
 export async function fetchQueuedCommands(base: string, characterId: string, control: ControlClaim | null = null): Promise<QueuedProjection> {
   const query = control?.claimId ? `?claim_id=${encodeURIComponent(control.claimId)}` : '';
-  return parseQueuedCommands(await sendJson(base, `/world/character/${encodeURIComponent(characterId)}/commands${query}`, {
+  return parseQueuedCommands(await sendJson(base, `/play/world/character/${encodeURIComponent(characterId)}/commands${query}`, {
     headers: claimHeaders(control),
   })) as QueuedProjection;
 }
 
 export async function submitCommand(base: string, payload: unknown, control: ControlClaim | null = null): Promise<unknown> {
-  return sendJson(base, '/world/commands', {
+  return sendJson(base, '/play/world/commands', {
     method: 'POST',
     headers: claimHeaders(control),
     body: JSON.stringify(payload),
@@ -589,14 +589,14 @@ export async function cancelQueuedCommand(base: string, characterId: string, com
     controller_generation: String(control.generation),
   });
   if (control.claimId) params.set('claim_id', control.claimId);
-  return sendJson(base, `/world/character/${encodeURIComponent(characterId)}/commands/${encodeURIComponent(commandId)}?${params}`, {
+  return sendJson(base, `/play/world/character/${encodeURIComponent(characterId)}/commands/${encodeURIComponent(commandId)}?${params}`, {
     method: 'DELETE',
     headers: claimHeaders(control),
   });
 }
 
 export async function fetchRecentEvents(base: string): Promise<unknown[]> {
-  const data = await sendJson(base, '/world/events/recent') as { events?: unknown[] };
+  const data = await sendJson(base, '/admin/world/events/recent') as { events?: unknown[] };
   return Array.isArray(data.events) ? data.events : [];
 }
 
@@ -608,7 +608,7 @@ export async function fetchCharacterRecentEvents(
   const query = control?.claimId ? `?claim_id=${encodeURIComponent(control.claimId)}` : '';
   const data = await sendJson(
     base,
-    `/world/character/${encodeURIComponent(characterId)}/events/recent${query}`,
+    `/play/world/character/${encodeURIComponent(characterId)}/events/recent${query}`,
     { headers: claimHeaders(control) },
   ) as { events?: unknown[] };
   return Array.isArray(data.events) ? data.events : [];
@@ -912,11 +912,13 @@ export function latestImageFailure(messages: unknown[], purposeOrOptions: string
 
 export function characterSheetHref(apiBase: string, characterId: string, page = 'character-sheet.html'): string {
   const url = new URL(page, location.href);
-  const normalized = normalizeBase(apiBase);
+  if (url.origin !== location.origin) {
+    throw new Error('Bunnyland browser links must use the page origin');
+  }
+  const normalized = assertSameOriginBase(apiBase);
   if (normalized) url.searchParams.set('server', normalized);
   else url.searchParams.delete('server');
   url.hash = characterId || '';
-  if (url.origin !== location.origin) return url.toString();
   return `${url.pathname.split('/').pop()}${url.search}${url.hash}`;
 }
 

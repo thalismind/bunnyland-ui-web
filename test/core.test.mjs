@@ -5,6 +5,7 @@ import vm from 'node:vm';
 
 import {
   actionIcon,
+  assertSameOriginBase,
   characterSheetHref,
   claimHeaders,
   createPlayerLiveUpdates,
@@ -15,6 +16,7 @@ import {
   initTheme,
   latestImageCompletion,
   login,
+  mediaUrl,
   mergePlayerHeaders,
   normalizeBase,
   normalizeTheme,
@@ -24,6 +26,7 @@ import {
   registerThemeOption,
   registerThemeOptions,
   sendJson,
+  serverFromUrl,
   setPlayerAuth,
   socketUrl,
   bindThemeSelect,
@@ -39,7 +42,10 @@ function plain(value) {
 
 test('API and theme helpers normalize shared client state', () => {
   assert.equal(normalizeBase(' http://server.test/api/ '), 'http://server.test/api');
-  assert.equal(socketUrl('https://server.test/api/', '/world/updates'), 'wss://server.test/api/world/updates');
+  assert.equal(
+    socketUrl('https://server.test/api/', '/admin/world/updates'),
+    'wss://server.test/api/admin/world/updates',
+  );
   assert.equal(normalizeTheme('dark'), 'purple-blue-dark');
   assert.equal(normalizeTheme('nope'), 'purple-blue-dark');
 });
@@ -72,9 +78,46 @@ test('shared login refuses to submit browser credentials cross-origin', async ()
   try {
     await assert.rejects(
       login('https://phishing.example/api', 'player', 'secret'),
-      /different origin/,
+      /page origin/,
     );
     assert.equal(fetched, false);
+  } finally {
+    globalThis.location = previousLocation;
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('all browser transport and configuration helpers enforce same-origin bases', async () => {
+  const previousLocation = globalThis.location;
+  const previousFetch = globalThis.fetch;
+  globalThis.location = {
+    href: 'https://sandbox.example/client?server=%2Fapi',
+    origin: 'https://sandbox.example',
+    search: '?server=%2Fapi',
+  };
+  globalThis.fetch = async () => new Response('{"ok":true}', {
+    headers: { 'Content-Type': 'application/json' },
+  });
+  try {
+    assert.equal(assertSameOriginBase('/api'), '/api');
+    assert.equal(serverFromUrl(), '/api');
+    assert.equal(
+      socketUrl('/api', '/play/world/updates'),
+      'wss://sandbox.example/api/play/world/updates',
+    );
+    assert.equal(mediaUrl('/api', '/public/media/image.png'), '/api/public/media/image.png');
+    assert.equal(mediaUrl('/api', 'data:image/png;base64,AA=='), 'data:image/png;base64,AA==');
+    await sendJson('/api', '/public/health');
+
+    for (const operation of [
+      () => assertSameOriginBase('https://evil.example/api'),
+      () => serverFromUrl('?server=https%3A%2F%2Fevil.example%2Fapi'),
+      () => socketUrl('https://evil.example/api'),
+      () => mediaUrl('/api', 'https://evil.example/image.png'),
+      () => sendJson('https://evil.example/api', '/public/health'),
+    ]) {
+      await assert.rejects(async () => operation(), /page origin/);
+    }
   } finally {
     globalThis.location = previousLocation;
     globalThis.fetch = previousFetch;
@@ -115,7 +158,10 @@ test('player update transport authenticates in the first frame without URL secre
 
   socket.open();
   assert.equal(opened, socket);
-  assert.equal(socket.url, 'wss://server.test/api/world/character/character%3A1/updates');
+  assert.equal(
+    socket.url,
+    'wss://server.test/api/play/world/character/character%3A1/updates',
+  );
   assert.doesNotMatch(socket.url, /claim-1|top-secret/);
   assert.deepEqual(JSON.parse(socket.sent[0]), {
     type: 'authenticate',
@@ -249,7 +295,7 @@ test('API sendJson merges player auth into explicit headers', async () => {
     assert.equal(headers.get('Authorization'), 'Bearer player-token');
     assert.equal(headers.get('X-Bunnyland-Claim-Secret'), 'claim-secret');
 
-    const result = await sendJson('http://server.test/api/', '/world/character/c1', {
+    const result = await sendJson('http://server.test/api/', '/play/world/character/c1', {
       headers: { 'X-Bunnyland-Claim-Secret': 'claim-secret' },
     });
 
@@ -399,7 +445,7 @@ test('event and image helpers share player narration behavior', () => {
     {
       data: {
         event_type: 'ImageGenerationCompletedEvent',
-        event: { event_id: 'image:1', world_epoch: 4, purpose: 'event', entity_id: 'room:1', url: '/media/scene.png' },
+        event: { event_id: 'image:1', world_epoch: 4, purpose: 'event', entity_id: 'room:1', url: '/public/media/scene.png' },
       },
     },
     {
@@ -412,9 +458,9 @@ test('event and image helpers share player narration behavior', () => {
 
   assert.deepEqual(
     plain(imageCompletions(messages, 'http://server.test/api', 'event')),
-    [{ entityId: 'room:1', purpose: 'event', url: 'http://server.test/api/media/scene.png', alphaUrl: '', epoch: 4 }],
+    [{ entityId: 'room:1', purpose: 'event', url: 'http://server.test/api/public/media/scene.png', alphaUrl: '', epoch: 4 }],
   );
-  assert.equal(latestImageCompletion(messages, { base: 'http://server.test/api', purpose: 'event' }).url, 'http://server.test/api/media/scene.png');
+  assert.equal(latestImageCompletion(messages, { base: 'http://server.test/api', purpose: 'event' }).url, 'http://server.test/api/public/media/scene.png');
 
   const drained = drainNarratedEvents(messages, {
     playerId: 'character:1',
@@ -519,7 +565,11 @@ test('gallery helpers render images with the correct spelling', () => {
 test('character sheet links preserve server and hash', () => {
   globalThis.location = new URL('http://client.test/player.html');
   assert.equal(
-    characterSheetHref('http://server.test/api/', 'character:1'),
-    'character-sheet.html?server=http%3A%2F%2Fserver.test%2Fapi#character:1',
+    characterSheetHref('http://client.test/api/', 'character:1'),
+    'character-sheet.html?server=http%3A%2F%2Fclient.test%2Fapi#character:1',
+  );
+  assert.throws(
+    () => characterSheetHref('http://evil.test/api/', 'character:1'),
+    /page origin/,
   );
 });
