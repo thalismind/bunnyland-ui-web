@@ -4,3 +4,8 @@ coverage/
 storybook-dist/
 storybook.zip
 .DS_Store
+.vite/
+artifacts/
+playwright-report/
+test-results/
+*.log
