@@ -6,7 +6,7 @@ import vm from 'node:vm';
 import {
   actionIcon,
   assertSameOriginBase,
-  characterSheetHref,
+  characterHref,
   claimHeaders,
   createPlayerLiveUpdates,
   drainNarratedEvents,
@@ -578,14 +578,18 @@ test('gallery helpers render images with the correct spelling', () => {
   assert.doesNotMatch(html, /imag[^e]/);
 });
 
-test('character sheet links preserve server and hash', () => {
+test('character links preserve server, view, and hash', () => {
   globalThis.location = new URL('http://client.test/player.html');
   assert.equal(
-    characterSheetHref('http://client.test/api/', 'character:1'),
-    'character-sheet.html?server=http%3A%2F%2Fclient.test%2Fapi#character:1',
+    characterHref('http://client.test/api/', 'character:1'),
+    'character.html?server=http%3A%2F%2Fclient.test%2Fapi#character:1',
+  );
+  assert.equal(
+    characterHref('http://client.test/api/', 'character:1', 'chat'),
+    'character.html?server=http%3A%2F%2Fclient.test%2Fapi&view=chat#character:1',
   );
   assert.throws(
-    () => characterSheetHref('http://evil.test/api/', 'character:1'),
+    () => characterHref('http://evil.test/api/', 'character:1'),
     /page origin/,
   );
 });

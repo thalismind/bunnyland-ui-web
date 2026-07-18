@@ -953,7 +953,12 @@ export function latestImageFailure(messages: unknown[], purposeOrOptions: string
   return best;
 }
 
-export function characterSheetHref(apiBase: string, characterId: string, page = 'character-sheet.html'): string {
+export function characterHref(
+  apiBase: string,
+  characterId: string,
+  view: 'chat' | 'sheet' = 'sheet',
+  page = 'character.html',
+): string {
   const url = new URL(page, location.href);
   if (url.origin !== location.origin) {
     throw new Error('Bunnyland browser links must use the page origin');
@@ -961,6 +966,8 @@ export function characterSheetHref(apiBase: string, characterId: string, page = 
   const normalized = assertSameOriginBase(apiBase);
   if (normalized) url.searchParams.set('server', normalized);
   else url.searchParams.delete('server');
+  if (view === 'chat') url.searchParams.set('view', 'chat');
+  else url.searchParams.delete('view');
   url.hash = characterId || '';
   return `${url.pathname.split('/').pop()}${url.search}${url.hash}`;
 }
