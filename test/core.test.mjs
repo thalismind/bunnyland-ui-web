@@ -36,6 +36,19 @@ import {
 } from '../dist/index.js';
 import { renderGalleryItems } from '../dist/player-widgets.js';
 
+test('shared application root preserves the bounded viewport flex chain', () => {
+  const css = fs.readFileSync('assets/bunnyland-ui.css', 'utf8');
+  const rule = css.match(/:where\(body > #app\)\s*\{([^}]+)\}/)?.[1] || '';
+
+  assert.match(rule, /display:\s*flex/);
+  assert.match(rule, /flex:\s*1 1 auto/);
+  assert.match(rule, /height:\s*100%/);
+  assert.match(rule, /min-height:\s*0/);
+
+  const buttonRule = css.match(/\nbutton\s*\{([^}]+)\}/)?.[1] || '';
+  assert.match(buttonRule, /line-height:\s*1\.2/);
+});
+
 function plain(value) {
   return JSON.parse(JSON.stringify(value));
 }
