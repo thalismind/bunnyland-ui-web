@@ -2,9 +2,13 @@ import {
   assertSameOriginBase,
   claimHeaders,
   type ControlClaimLike,
+  getClientId,
   getPlayerAuth,
   mediaUrl,
+  mergePlayerHeaders,
+  parseJsonResponse,
   sendJson,
+  setClientId,
   socketUrl,
 } from './api';
 import { storageGet, storageRemove, storageSet } from './widgets';
@@ -118,6 +122,7 @@ export interface ControlClaim {
   generation: number;
   claimId: string;
   claimSecret: string;
+  clientId: string;
   active?: boolean;
 }
 
@@ -275,15 +280,16 @@ export function openPlayerUpdates(options: OpenPlayerUpdatesOptions): PlayerUpda
       : null
   );
   if (!factory) return null;
-  const path = `/play/world/character/${encodeURIComponent(options.characterId)}/updates`;
+  if (!options.control?.claimId) return null;
+  const path = `/play/claims/${encodeURIComponent(options.control.claimId)}/stream`;
   const socket = factory(socketUrl(options.base, path, getPlayerAuth()));
   socket.onopen = () => {
     socket.send(JSON.stringify({
       type: 'authenticate',
       data: {
         token: getPlayerAuth().startsWith('Bearer ') ? getPlayerAuth().slice(7) : null,
-        claim_id: options.control?.claimId || null,
         claim_secret: options.control?.claimSecret || null,
+        client_id: options.control?.clientId || getClientId(),
       },
     }));
     options.onOpen?.();
@@ -515,6 +521,7 @@ export function storedClaimControl(key: string, characterId: string): ControlCla
       generation: Number(data.generation || 0),
       claimId: String(data.claimId),
       claimSecret: String(data.claimSecret),
+      clientId: String(data.clientId || getClientId()),
       active: data.active !== false,
     };
   } catch (_err) {
@@ -529,6 +536,7 @@ export function storeClaimControl(key: string, control: ControlClaim): void {
     generation: control.generation,
     claimId: control.claimId,
     claimSecret: control.claimSecret,
+    clientId: control.clientId,
     active: control.active !== false,
   }));
 }
@@ -538,65 +546,91 @@ export function clearClaimControl(key: string, characterId: string): void {
 }
 
 export async function fetchCharacters(base: string): Promise<CharacterSummary[]> {
-  const data = await sendJson(base, '/play/world/characters') as { characters?: unknown[] };
+  const data = await sendJson(base, '/play/characters') as { characters?: unknown[] };
   return parseCharacterList(data).characters;
 }
 
 export async function claimCharacter(base: string, characterId: string, storageKey: string, options: ClaimOptions = {}): Promise<ControlClaim> {
   const stored = storedClaimControl(storageKey, characterId);
-  const data = await sendJson(base, '/play/world/controllers/web/claim', {
-    method: 'POST',
-    headers: claimHeaders(stored),
-    body: JSON.stringify({
-      character_id: characterId,
-      client_id: persistentClientId(options.clientIdKey || `${storageKey}.clientId`, options.clientIdPrefix || 'web'),
-      claim_id: stored?.claimId || undefined,
-      fallback_controller: options.fallbackController || 'suspend',
-      timeout_seconds: options.timeoutSeconds || 1800,
-      label: options.label || 'web',
-    }),
-  }) as Record<string, unknown>;
-  const control = controlFromResponse(data, characterId) as ControlClaim;
+  const clientId = persistentClientId(
+    options.clientIdKey || `${storageKey}.clientId`,
+    options.clientIdPrefix || 'web',
+  );
+  setClientId(clientId);
+  const headers = mergePlayerHeaders(claimHeaders({ ...stored, clientId }));
+  const path = stored?.claimId
+    ? `/play/claims/${encodeURIComponent(stored.claimId)}`
+    : '/play/claims';
+  const response = await fetch(`${assertSameOriginBase(base)}${path}`, {
+    method: stored?.claimId ? 'PUT' : 'POST',
+    headers,
+    credentials: 'include',
+    ...(!stored?.claimId ? {
+      body: JSON.stringify({
+        character_id: characterId,
+        fallback_controller: options.fallbackController || 'suspend',
+        timeout_seconds: options.timeoutSeconds || 1800,
+        label: options.label || 'web',
+      }),
+    } : {}),
+  });
+  const data = await parseJsonResponse(response) as Record<string, unknown>;
+  const claimSecret = response.headers.get('X-Bunnyland-Claim-Secret') || stored?.claimSecret || '';
+  const control = controlFromResponse(
+    { ...data, claim_secret: claimSecret, client_id: clientId },
+    characterId,
+    { active: data.control !== 'fallback' },
+  ) as ControlClaim;
   storeClaimControl(storageKey, control);
   return control;
 }
 
 export async function fetchCharacterProjection(base: string, characterId: string, control: ControlClaim | null = null): Promise<CharacterProjection> {
-  const query = control?.claimId ? `?claim_id=${encodeURIComponent(control.claimId)}` : '';
-  return parseCharacterProjection(await sendJson(base, `/play/world/character/${encodeURIComponent(characterId)}${query}`, {
+  void characterId;
+  if (!control?.claimId) return null as unknown as CharacterProjection;
+  return parseCharacterProjection(await sendJson(base, `/play/claims/${encodeURIComponent(control.claimId)}/projection`, {
     headers: claimHeaders(control),
   })) as CharacterProjection;
 }
 
 export async function fetchQueuedCommands(base: string, characterId: string, control: ControlClaim | null = null): Promise<QueuedProjection> {
-  const query = control?.claimId ? `?claim_id=${encodeURIComponent(control.claimId)}` : '';
-  return parseQueuedCommands(await sendJson(base, `/play/world/character/${encodeURIComponent(characterId)}/commands${query}`, {
+  void characterId;
+  if (!control?.claimId) return null as unknown as QueuedProjection;
+  return parseQueuedCommands(await sendJson(base, `/play/claims/${encodeURIComponent(control.claimId)}/projection`, {
     headers: claimHeaders(control),
   })) as QueuedProjection;
 }
 
 export async function submitCommand(base: string, payload: unknown, control: ControlClaim | null = null): Promise<unknown> {
-  return sendJson(base, '/play/world/commands', {
+  if (!control?.claimId) throw new Error('A character claim is required');
+  const raw = payload as Record<string, unknown>;
+  const command = {
+    command_type: raw.command_type,
+    payload: raw.payload || {},
+    cost: raw.cost || {},
+    lane: raw.lane || 'world',
+    on_insufficient_points: raw.on_insufficient_points || 'queue',
+    expires_at_epoch: raw.expires_at_epoch,
+    expected_epoch: raw.expected_epoch,
+    id: raw.command_id,
+  };
+  return sendJson(base, `/play/claims/${encodeURIComponent(control.claimId)}/commands`, {
     method: 'POST',
     headers: claimHeaders(control),
-    body: JSON.stringify(payload),
+    body: JSON.stringify(command),
   });
 }
 
 export async function cancelQueuedCommand(base: string, characterId: string, commandId: string, control: ControlClaim): Promise<unknown> {
-  const params = new URLSearchParams({
-    controller_id: control.controllerId,
-    controller_generation: String(control.generation),
-  });
-  if (control.claimId) params.set('claim_id', control.claimId);
-  return sendJson(base, `/play/world/character/${encodeURIComponent(characterId)}/commands/${encodeURIComponent(commandId)}?${params}`, {
+  void characterId;
+  return sendJson(base, `/play/claims/${encodeURIComponent(control.claimId)}/commands/${encodeURIComponent(commandId)}`, {
     method: 'DELETE',
     headers: claimHeaders(control),
   });
 }
 
 export async function fetchRecentEvents(base: string): Promise<unknown[]> {
-  const data = await sendJson(base, '/admin/world/events/recent') as { events?: unknown[] };
+  const data = await sendJson(base, '/admin/world/events') as { events?: unknown[] };
   return Array.isArray(data.events) ? data.events : [];
 }
 
@@ -605,10 +639,11 @@ export async function fetchCharacterRecentEvents(
   characterId: string,
   control: ControlClaimLike | null = null,
 ): Promise<unknown[]> {
-  const query = control?.claimId ? `?claim_id=${encodeURIComponent(control.claimId)}` : '';
+  void characterId;
+  if (!control?.claimId) return [];
   const data = await sendJson(
     base,
-    `/play/world/character/${encodeURIComponent(characterId)}/events/recent${query}`,
+    `/play/claims/${encodeURIComponent(control.claimId)}/events`,
     { headers: claimHeaders(control) },
   ) as { events?: unknown[] };
   return Array.isArray(data.events) ? data.events : [];
@@ -621,8 +656,8 @@ export function parseCharacterList(data: unknown): { epoch: number; characters: 
     characters: ((raw?.characters || []) as unknown[]).map(character => {
       const item = character as Record<string, unknown>;
       return {
-        id: String(item.character_id || ''),
-        name: String(item.name || item.character_id || ''),
+        id: String(item.id || item.character_id || ''),
+        name: String(item.name || item.id || item.character_id || ''),
         kind: String(item.kind || 'character'),
         suspended: Boolean(item.suspended),
       };
@@ -631,9 +666,11 @@ export function parseCharacterList(data: unknown): { epoch: number; characters: 
 }
 
 export function parseCharacterProjection(data: unknown): CharacterProjection | null {
-  const raw = data as Record<string, unknown> | null;
+  const envelope = data as Record<string, unknown> | null;
+  const raw = (envelope?.character || envelope) as Record<string, unknown> | null;
   if (!raw || !raw.character_id) return null;
-  const room = (raw.room || {}) as Record<string, unknown>;
+  const scene = (envelope?.scene || {}) as Record<string, unknown>;
+  const room = (scene.room || raw.room || {}) as Record<string, unknown>;
   const targetGroups: Record<string, TargetOption[]> = {};
   for (const [kind, targets] of Object.entries((raw.target_groups || {}) as Record<string, unknown[]>)) {
     targetGroups[kind] = (targets || []).map(target => {
@@ -649,7 +686,7 @@ export function parseCharacterProjection(data: unknown): CharacterProjection | n
   return {
     characterId: String(raw.character_id || ''),
     characterName: String(raw.character_name || raw.character_id || ''),
-    worldEpoch: Number(raw.world_epoch || 0),
+    worldEpoch: Number(envelope?.world_epoch || raw.world_epoch || 0),
     room: {
       id: String(room.id || ''),
       title: String(room.title || room.id || ''),
@@ -669,22 +706,27 @@ export function parseCharacterProjection(data: unknown): CharacterProjection | n
     points: raw.points as Record<string, number> || {},
     controller: raw.controller as CharacterProjection['controller'] || null,
     portrait: raw.portrait as Record<string, unknown> || {},
-    sheet: raw.sheet as Record<string, unknown> || {},
+    sheet: envelope?.sheet as Record<string, unknown> || raw.sheet as Record<string, unknown> || {},
     targetGroups,
-    actions: Array.isArray(raw.actions) ? raw.actions as ActionView[] : [],
+    actions: Array.isArray(envelope?.actions)
+      ? envelope.actions as ActionView[]
+      : Array.isArray(raw.actions) ? raw.actions as ActionView[] : [],
   };
 }
 
 export function parseQueuedCommands(data: unknown): QueuedProjection | null {
-  const raw = data as Record<string, unknown> | null;
+  const envelope = data as Record<string, unknown> | null;
+  const raw = (envelope?.character || envelope) as Record<string, unknown> | null;
   if (!raw || !raw.character_id) return null;
   return {
     characterId: String(raw.character_id || ''),
-    worldEpoch: Number(raw.world_epoch || 0),
+    worldEpoch: Number(envelope?.world_epoch || raw.world_epoch || 0),
     generatedAtUnix: raw.generated_at_unix == null ? null : Number(raw.generated_at_unix),
     nextTickAtUnix: raw.next_tick_at_unix == null ? null : Number(raw.next_tick_at_unix),
     tickSeconds: raw.tick_seconds == null ? null : Number(raw.tick_seconds),
-    commands: Array.isArray(raw.commands) ? raw.commands as QueuedCommand[] : [],
+    commands: Array.isArray(envelope?.commands)
+      ? envelope.commands as QueuedCommand[]
+      : Array.isArray(raw.commands) ? raw.commands as QueuedCommand[] : [],
   };
 }
 
@@ -695,8 +737,9 @@ export function controlFromResponse(data: unknown, fallbackCharacterId = '', { a
     characterId: String(raw.character_id || fallbackCharacterId),
     controllerId: String(raw.controller_id || ''),
     generation: Number(raw.controller_generation ?? raw.generation ?? 0),
-    claimId: String(raw.claim_id || ''),
+    claimId: String(raw.id || raw.claim_id || ''),
     claimSecret: String(raw.claim_secret || ''),
+    clientId: String(raw.client_id || getClientId()),
     active,
   };
 }

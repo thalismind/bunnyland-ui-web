@@ -56,8 +56,8 @@ function plain(value) {
 test('API and theme helpers normalize shared client state', () => {
   assert.equal(normalizeBase(' http://server.test/api/ '), 'http://server.test/api');
   assert.equal(
-    socketUrl('https://server.test/api/', '/admin/world/updates'),
-    'wss://server.test/api/admin/world/updates',
+    socketUrl('https://server.test/api/', '/admin/world/stream'),
+    'wss://server.test/api/admin/world/stream',
   );
   assert.equal(normalizeTheme('dark'), 'purple-blue-dark');
   assert.equal(normalizeTheme('nope'), 'purple-blue-dark');
@@ -115,8 +115,8 @@ test('all browser transport and configuration helpers enforce same-origin bases'
     assert.equal(assertSameOriginBase('/api'), '/api');
     assert.equal(serverFromUrl(), '/api');
     assert.equal(
-      socketUrl('/api', '/play/world/updates'),
-      'wss://sandbox.example/api/play/world/updates',
+      socketUrl('/api', '/admin/world/stream'),
+      'wss://sandbox.example/api/admin/world/stream',
     );
     assert.equal(mediaUrl('/api', '/public/media/image.png'), '/api/public/media/image.png');
     assert.equal(mediaUrl('/api', 'data:image/png;base64,AA=='), 'data:image/png;base64,AA==');
@@ -164,7 +164,7 @@ test('player update transport authenticates in the first frame without URL secre
   const opened = openPlayerUpdates({
     base: 'https://server.test/api',
     characterId: 'character:1',
-    control: { claimId: 'claim-1', claimSecret: 'top-secret' },
+    control: { claimId: 'claim-1', claimSecret: 'top-secret', clientId: 'client-1' },
     webSocketFactory: url => (socket = new FakePlayerSocket(url)),
     onFrame: frame => frames.push(frame),
   });
@@ -173,12 +173,12 @@ test('player update transport authenticates in the first frame without URL secre
   assert.equal(opened, socket);
   assert.equal(
     socket.url,
-    'wss://server.test/api/play/world/character/character%3A1/updates',
+    'wss://server.test/api/play/claims/claim-1/stream',
   );
-  assert.doesNotMatch(socket.url, /claim-1|top-secret/);
+  assert.doesNotMatch(socket.url, /top-secret/);
   assert.deepEqual(JSON.parse(socket.sent[0]), {
     type: 'authenticate',
-    data: { token: null, claim_id: 'claim-1', claim_secret: 'top-secret' },
+    data: { token: null, claim_secret: 'top-secret', client_id: 'client-1' },
   });
   socket.message({ type: 'mystery', data: {} });
   socket.message({ type: 'event', data: { event_type: 'Moved' } });
@@ -192,6 +192,7 @@ test('live coordinator stops polling at ready and resumes immediately on disconn
   const live = createPlayerLiveUpdates({
     base: 'http://server.test',
     characterId: 'character:1',
+    control: { claimId: 'claim-1', claimSecret: 'secret', clientId: 'client-1' },
     refresh: () => { refreshes += 1; },
     onState: state => states.push(state),
     webSocketFactory: url => {
@@ -225,6 +226,7 @@ test('live coordinator coalesces bursts and serializes a follow-up refresh', asy
   const live = createPlayerLiveUpdates({
     base: 'http://server.test',
     characterId: 'character:1',
+    control: { claimId: 'claim-1', claimSecret: 'secret', clientId: 'client-1' },
     refresh: () => {
       calls.push(calls.length + 1);
       if (calls.length === 1) return new Promise(resolve => { releaseFirst = resolve; });
@@ -251,6 +253,7 @@ test('live coordinator deduplicates events and refreshes after stream gaps', asy
   const live = createPlayerLiveUpdates({
     base: 'http://server.test',
     characterId: 'character:1',
+    control: { claimId: 'claim-1', claimSecret: 'secret', clientId: 'client-1' },
     refresh: () => { refreshes += 1; },
     onFrame: frame => frames.push(frame),
     webSocketFactory: url => (socket = new FakePlayerSocket(url)),
@@ -308,7 +311,7 @@ test('API sendJson merges player auth into explicit headers', async () => {
     assert.equal(headers.get('Authorization'), 'Bearer player-token');
     assert.equal(headers.get('X-Bunnyland-Claim-Secret'), 'claim-secret');
 
-    const result = await sendJson('http://server.test/api/', '/play/world/character/c1', {
+    const result = await sendJson('http://server.test/api/', '/play/claims/claim-1/projection', {
       headers: { 'X-Bunnyland-Claim-Secret': 'claim-secret' },
     });
 

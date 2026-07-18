@@ -1,13 +1,18 @@
 export interface AdminAuth {
   authorization?: string;
+  clientId?: string;
 }
 
 export interface ControlClaimLike {
   claimId?: string;
   claimSecret?: string;
+  clientId?: string;
 }
 
 let playerAuthHeader = '';
+let browserClientId = typeof globalThis.crypto?.randomUUID === 'function'
+  ? globalThis.crypto.randomUUID()
+  : `web-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 export function normalizeBase(url: string): string {
   return String(url || '').trim().replace(/\/$/, '');
@@ -43,12 +48,15 @@ export function setServerInUrl(base: string, href = globalThis.location?.href ||
 export function jsonHeaders(authHeader = ''): Record<string, string> {
   return {
     'Content-Type': 'application/json',
+    'X-Bunnyland-Client-Id': browserClientId,
     ...(authHeader.startsWith('Bearer ') ? { Authorization: authHeader } : {}),
   };
 }
 
 export function adminHeaders(auth: AdminAuth = {}, contentType = ''): Record<string, string> {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = {
+    'X-Bunnyland-Client-Id': auth.clientId || browserClientId,
+  };
   if (contentType) headers['Content-Type'] = contentType;
   if (auth.authorization?.startsWith('Bearer ')) headers.Authorization = auth.authorization;
   return headers;
@@ -57,12 +65,16 @@ export function adminHeaders(auth: AdminAuth = {}, contentType = ''): Record<str
 export function claimHeaders(control: ControlClaimLike | null = null): Record<string, string> {
   return {
     ...jsonHeaders(playerAuthHeader),
+    'X-Bunnyland-Client-Id': control?.clientId || browserClientId,
     ...(control?.claimSecret ? { 'X-Bunnyland-Claim-Secret': control.claimSecret } : {}),
   };
 }
 
 export function mergePlayerHeaders(headers: HeadersInit = {}): Headers {
   const merged = new Headers(headers);
+  if (!merged.has('X-Bunnyland-Client-Id')) {
+    merged.set('X-Bunnyland-Client-Id', browserClientId);
+  }
   if (playerAuthHeader.startsWith('Bearer ')) {
     merged.set('Authorization', playerAuthHeader);
   }
@@ -90,22 +102,22 @@ export async function sendJson(base: string, path: string, init: RequestInit = {
 
 export async function login(base: string, username: string, password: string): Promise<unknown> {
   assertSameOriginBase(base);
-  return sendJson(base, '/auth/login', {
+  return sendJson(base, '/auth/session', {
     method: 'POST',
     body: JSON.stringify({ username, password, delivery: 'cookie' }),
   });
 }
 
 export async function authMe(base: string): Promise<unknown> {
-  return sendJson(base, '/auth/me');
+  return sendJson(base, '/auth/session');
 }
 
 export async function rotateAuth(base: string): Promise<unknown> {
-  return sendJson(base, '/auth/rotate', { method: 'POST' });
+  return sendJson(base, '/auth/session', { method: 'PATCH' });
 }
 
 export async function logout(base: string): Promise<unknown> {
-  return sendJson(base, '/auth/logout', { method: 'POST' });
+  return sendJson(base, '/auth/session', { method: 'DELETE' });
 }
 
 export function setPlayerAuth(authHeader = ''): void {
@@ -116,6 +128,15 @@ export function getPlayerAuth(): string {
   return playerAuthHeader;
 }
 
+export function setClientId(clientId: string): void {
+  const normalized = clientId.trim();
+  if (normalized) browserClientId = normalized;
+}
+
+export function getClientId(): string {
+  return browserClientId;
+}
+
 export async function sendAdmin(base: string, path: string, auth: AdminAuth = {}, init: RequestInit = {}): Promise<unknown> {
   return parseJsonResponse(await fetch(`${assertSameOriginBase(base)}${path}`, {
     ...init,
@@ -124,7 +145,7 @@ export async function sendAdmin(base: string, path: string, auth: AdminAuth = {}
   }));
 }
 
-export function socketUrl(base: string, path = '/admin/world/updates', _authHeader = ''): string {
+export function socketUrl(base: string, path = '/admin/world/stream', _authHeader = ''): string {
   const normalized = assertSameOriginBase(base);
   const httpUrl = globalThis.location
     ? new URL(`${normalized}${path}`, globalThis.location.href).href
@@ -143,11 +164,11 @@ export function mediaUrl(base: string, url: string): string {
 }
 
 export async function requestSceneImage(base: string, characterId: string, control: ControlClaimLike | null = null): Promise<unknown> {
-  const params = new URLSearchParams();
-  if (control?.claimId) params.set('claim_id', control.claimId);
-  const query = params.toString();
-  return sendJson(base, `/play/world/character/${encodeURIComponent(characterId)}/scene-image${query ? `?${query}` : ''}`, {
+  void characterId;
+  if (!control?.claimId) throw new Error('A character claim is required');
+  return sendJson(base, `/play/claims/${encodeURIComponent(control.claimId)}/jobs`, {
     method: 'POST',
     headers: claimHeaders(control),
+    body: JSON.stringify({ kind: 'scene_image' }),
   });
 }
