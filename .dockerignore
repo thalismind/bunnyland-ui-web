@@ -1,0 +1,10 @@
+.git
+.github
+.npm-cache
+.storybook-build
+artifacts
+dist
+node_modules
+storybook-dist
+storybook.zip
+test-results

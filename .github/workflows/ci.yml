@@ -20,6 +20,12 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+      - run: npm run pack:artifact
+      - name: Upload versioned consumer package
+        uses: actions/upload-artifact@v7
+        with:
+          name: bunnyland-ui-web-package
+          path: artifacts/*.tgz
 
   storybook:
     runs-on: ubuntu-latest

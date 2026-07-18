@@ -3,6 +3,7 @@ import { escapeHtml, storageGet, storageSet } from './widgets';
 export const THEME_KEY = 'bunnyland.theme';
 export const THEME_CLASS_PREFIX = 'bl-theme-';
 export const DEFAULT_THEME = 'purple-blue-dark';
+export const THEME_CHANGE_EVENT = 'bunnyland:themechange';
 
 export interface ThemeOption {
   value: string;
@@ -80,6 +81,9 @@ function applyTheme(theme: string, root: HTMLElement, persist: boolean): string 
   root.dataset.theme = theme;
   if (persist) storageSet(THEME_KEY, theme);
   refreshThemeSelects();
+  if (typeof root.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+    root.dispatchEvent(new CustomEvent(THEME_CHANGE_EVENT, { detail: { theme } }));
+  }
   return theme;
 }
 

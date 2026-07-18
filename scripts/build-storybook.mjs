@@ -59,6 +59,8 @@ async function assembleOutput() {
   }
   await cp(join(root, 'storybook', 'index.html'), join(outDir, 'index.html'));
   await cp(join(root, 'storybook', 'storybook.js'), join(outDir, 'storybook.js'));
+  await copyFile(join(root, '.storybook-build', 'preact-story.js'), join(assetOut, 'preact-story.js'));
+  await copyFile(join(root, '.storybook-build', 'preact-story.js.map'), join(assetOut, 'preact-story.js.map'));
 }
 
 function startServer() {
@@ -246,7 +248,7 @@ async function main() {
   const captured = [];
   for (const theme of themes) {
     await page.goto(`${base}/index.html?theme=${encodeURIComponent(theme.value)}`, { waitUntil: 'networkidle' });
-    await page.waitForFunction(() => window.__storybookReady === true);
+    await page.waitForFunction(() => window.__storybookReady === true && window.__preactStoryReady === true);
     const file = join(shotDir, `${theme.value}.png`);
     await page.screenshot({ path: file, fullPage: true });
     captured.push(`${theme.value}.png`);
@@ -255,7 +257,7 @@ async function main() {
 
   // Overlay shot: client menu open on the default theme.
   await page.goto(`${base}/index.html?theme=${encodeURIComponent(themes[0].value)}&open=menu`, { waitUntil: 'networkidle' });
-  await page.waitForFunction(() => window.__storybookReady === true);
+  await page.waitForFunction(() => window.__storybookReady === true && window.__preactStoryReady === true);
   await page.waitForSelector('#client-menu-dialog:not(.hidden)');
   await page.screenshot({ path: join(shotDir, 'client-menu.png'), fullPage: true });
   captured.push('client-menu.png');

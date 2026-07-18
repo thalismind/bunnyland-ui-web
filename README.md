@@ -1,8 +1,8 @@
 # Bunnyland UI Web
 
-Shared web UI, browser helpers, and gameplay display utilities for Bunnyland browser clients. The package is publish-ready as `@bunnyland/ui-web`.
-
-This package is intentionally not a Preact, React, or Textual component library. Framework-specific packages such as `@bunnyland/ui-preact` or `@bunnyland/ui-textual` should depend on this package for theme tokens, action helpers, API helpers, and shared behavior.
+Shared Preact components, web UI assets, browser helpers, and gameplay display utilities for
+Bunnyland browser clients. The package is publish-ready as `@bunnyland/ui-web` and keeps its
+legacy browser globals intact while clients migrate incrementally.
 
 ## Static Browser Clients
 
@@ -19,16 +19,12 @@ The JavaScript assets preserve the browser globals used by the existing clients:
 - `window.BunnylandApi`
 - `window.BunnylandPlay`
 
-## Vite Clients And OOT Plugins
+## Vite, TypeScript, And Preact Clients
 
-Out-of-tree Vite clients should use a local package dependency while developing:
+Install the package and its deliberately small Preact peer dependency:
 
-```json
-{
-  "dependencies": {
-    "@bunnyland/ui-web": "file:../../bunnyland-ui-web"
-  }
-}
+```sh
+npm install @bunnyland/ui-web preact
 ```
 
 Then import the typed helpers. Prefer narrow modules so Vite and Rollup can tree shake unrelated admin or player code:
@@ -40,6 +36,49 @@ import { bindThemeSelect } from '@bunnyland/ui-web/theme';
 import { renderGalleryItems } from '@bunnyland/ui-web/player-widgets';
 import '@bunnyland/ui-web/assets/bunnyland-ui.css';
 ```
+
+Use direct Preact imports for shared functional components and hooks; React and
+`preact/compat` are not required:
+
+```tsx
+import { render } from 'preact';
+import { useState } from 'preact/hooks';
+import {
+  Button,
+  Field,
+  Pane,
+  SearchSelect,
+  ThemeSelect,
+  Toolbar,
+  ToolbarRow,
+  useTheme,
+} from '@bunnyland/ui-web/preact';
+```
+
+`preact` is a peer dependency so each application owns one runtime and Vite can deduplicate
+it. The library build externalizes `preact` and `preact/hooks` rather than bundling a second
+copy. See the canonical [Bunnyland web design language](docs/developer/design-language.md)
+for component boundaries, interaction states, and migration rules.
+
+## Versioned Consumer Artifact
+
+Build the standalone npm tarball with:
+
+```sh
+npm ci
+npm run pack:artifact
+```
+
+The output is `artifacts/bunnyland-ui-web-<version>.tgz`. It contains `package.json`, typed
+`dist/` entry points, legacy `assets/`, source maps, and documentation, and has no dependency
+on an adjacent checkout. A consumer can pin that exact artifact:
+
+```sh
+npm install ./artifacts/bunnyland-ui-web-0.2.0.tgz preact
+```
+
+CI uploads the versioned tarball for every checked revision. Release consumers should pin a
+published package version or immutable tarball checksum, never a sibling source directory.
 
 ## Themes
 
@@ -114,8 +153,8 @@ not a static browser verb catalogue.
 
 ## Storybook
 
-A component storybook renders the shared toolbar, theme selector, form controls, and widget
-helpers as a live gallery so the style system is easy to review. Build it with:
+A component storybook renders the shared Preact foundation, theme selector, form controls,
+legacy widget helpers, and every semantic state as a live gallery. Build it with:
 
 ```sh
 npm run storybook
@@ -143,4 +182,5 @@ Run:
 npm run check
 ```
 
-That runs ESLint, the Vite library build, TypeScript declaration generation, and Node test coverage.
+That runs ESLint, the Vite 8 library build, TypeScript declaration generation, Node test
+coverage, and the Preact component tests in a browser-like DOM.

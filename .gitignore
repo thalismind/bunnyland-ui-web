@@ -1,8 +1,10 @@
 node_modules/
+.npm-cache/
 dist/
 coverage/
 storybook-dist/
 storybook.zip
+.storybook-build/
 .DS_Store
 .vite/
 artifacts/

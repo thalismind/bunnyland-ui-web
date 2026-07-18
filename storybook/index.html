@@ -113,6 +113,35 @@
         align-items: center;
         gap: 8px;
       }
+
+      .sb-preact-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .sb-preact-stack .bl-toolbar {
+        border: 1px solid var(--bl-border);
+        border-radius: var(--bl-radius-sm);
+      }
+
+      .sb-preact-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        min-height: 390px;
+        border: 1px solid var(--bl-border);
+        border-radius: var(--bl-radius-sm);
+        overflow: visible;
+      }
+
+      .sb-preact-grid .pane:last-child {
+        border-right: 0;
+      }
+
+      @media (max-width: 720px) {
+        .sb-grid,
+        .sb-preact-grid { grid-template-columns: 1fr; }
+      }
     </style>
   </head>
   <body>
@@ -142,6 +171,16 @@
       </p>
 
       <div class="sb-grid">
+        <section class="sb-card wide">
+          <div class="sb-card-title">Preact component foundation</div>
+          <div class="sb-card-desc">
+            Direct <code>@bunnyland/ui-web/preact</code> components using functional
+            components and hooks. Interactions update their local pane without rebuilding
+            the surrounding storybook.
+          </div>
+          <div id="sb-preact-foundation" class="sb-demo"></div>
+        </section>
+
         <!-- Color tokens -->
         <section class="sb-card">
           <div class="sb-card-title">Color tokens</div>
@@ -327,5 +366,6 @@
 
     <script src="assets/bunnyland-ui.js"></script>
     <script src="storybook.js"></script>
+    <script type="module" src="assets/preact-story.js"></script>
   </body>
 </html>
