@@ -562,6 +562,8 @@ test('browser asset globals stay compatible with static clients', async () => {
   assert.equal(typeof context.BunnylandUI.bindThemeSelect, 'function');
   assert.equal(typeof context.BunnylandApi.normalizeBase, 'function');
   assert.equal(typeof context.BunnylandPlay.filterActions, 'function');
+  assert.equal(typeof context.BunnylandPlay.fetchCharacterProfile, 'function');
+  assert.equal(typeof context.BunnylandPlay.fetchCharacterProfileList, 'function');
   assert.equal(typeof context.BunnylandPlay.createPlayerLiveUpdates, 'function');
   await context.BunnylandUI.loadConfig();
   assert.equal(context.BunnylandUI.currentTheme(), 'asset-linked');
