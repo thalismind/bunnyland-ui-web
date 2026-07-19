@@ -36,6 +36,17 @@ validated option and provide a matching `:root.bl-theme-<value>` token block. Th
 is stored under `bunnyland.theme`, reflected in `data-theme`, and broadcast with the
 `bunnyland:themechange` event.
 
+Full-screen applications use a flex column rooted at `body > #app`. The body uses the
+dynamic viewport height, with a `100vh` fallback, while the application work surface and
+nested panes use `min-width: 0` and `min-height: 0`. The document stays fixed; pane bodies
+or an explicit stacked-pane work surface own scrolling. Document-style pages such as a
+welcome screen may opt back into normal page scrolling.
+
+At phone widths, toolbars wrap, fixed-width controls stay within the viewport, and
+multi-pane work surfaces switch to a single-column grid or vertical flex stack. Keep every
+workflow pane reachable unless product requirements explicitly make it desktop-only.
+Prefer CSS Grid, Flexbox, `minmax()`, and `clamp()` over viewport-aware component state.
+
 ## Shared Preact elements
 
 Import Preact components from the dedicated entry point:
