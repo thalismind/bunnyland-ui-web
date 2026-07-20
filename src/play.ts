@@ -1,4 +1,5 @@
 import {
+  ApiError,
   assertSameOriginBase,
   claimHeaders,
   type ControlClaimLike,
@@ -545,6 +546,10 @@ export function clearClaimControl(key: string, characterId: string): void {
   storageRemove(claimStorageKey(key, characterId));
 }
 
+export function isClaimNotFoundError(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 404;
+}
+
 export async function fetchCharacters(base: string): Promise<CharacterSummary[]> {
   const data = await sendJson(base, '/play/characters') as { characters?: unknown[] };
   return parseCharacterList(data).characters;
@@ -561,20 +566,28 @@ export async function claimCharacter(base: string, characterId: string, storageK
   const path = stored?.claimId
     ? `/play/claims/${encodeURIComponent(stored.claimId)}`
     : '/play/claims';
-  const response = await fetch(`${assertSameOriginBase(base)}${path}`, {
-    method: stored?.claimId ? 'PUT' : 'POST',
-    headers,
-    credentials: 'include',
-    ...(!stored?.claimId ? {
-      body: JSON.stringify({
-        character_id: characterId,
-        fallback_controller: options.fallbackController || 'suspend',
-        timeout_seconds: options.timeoutSeconds || 1800,
-        label: options.label || 'web',
-      }),
-    } : {}),
-  });
-  const data = await parseJsonResponse(response) as Record<string, unknown>;
+  let response: Response;
+  let data: Record<string, unknown>;
+  try {
+    response = await fetch(`${assertSameOriginBase(base)}${path}`, {
+      method: stored?.claimId ? 'PUT' : 'POST',
+      headers,
+      credentials: 'include',
+      ...(!stored?.claimId ? {
+        body: JSON.stringify({
+          character_id: characterId,
+          fallback_controller: options.fallbackController || 'suspend',
+          timeout_seconds: options.timeoutSeconds || 1800,
+          label: options.label || 'web',
+        }),
+      } : {}),
+    });
+    data = await parseJsonResponse(response) as Record<string, unknown>;
+  } catch (error) {
+    if (!stored?.claimId || !isClaimNotFoundError(error)) throw error;
+    clearClaimControl(storageKey, characterId);
+    return claimCharacter(base, characterId, storageKey, options);
+  }
   const claimSecret = response.headers.get('X-Bunnyland-Claim-Secret') || stored?.claimSecret || '';
   const control = controlFromResponse(
     { ...data, claim_secret: claimSecret, client_id: clientId },

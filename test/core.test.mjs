@@ -4,9 +4,11 @@ import test from 'node:test';
 import vm from 'node:vm';
 
 import {
+  ApiError,
   actionIcon,
   assertSameOriginBase,
   characterHref,
+  claimCharacter,
   claimHeaders,
   createPlayerLiveUpdates,
   drainNarratedEvents,
@@ -14,6 +16,7 @@ import {
   getPlayerAuth,
   imageCompletions,
   initTheme,
+  isClaimNotFoundError,
   latestImageCompletion,
   login,
   mediaUrl,
@@ -336,6 +339,52 @@ test('API sendJson merges player auth into explicit headers', async () => {
   }
 });
 
+test('expired stored claims are replaced with a fresh claim', async () => {
+  const previousFetch = globalThis.fetch;
+  const previousLocalStorage = globalThis.localStorage;
+  const previousLocation = globalThis.location;
+  const values = new Map([['client.claim.character:1', JSON.stringify({
+    controllerId: 'controller:old', claimId: 'claim:old', claimSecret: 'secret:old',
+  })]]);
+  const calls = [];
+  globalThis.location = new URL('http://server.test/client');
+  globalThis.localStorage = {
+    getItem: key => values.get(key) || null,
+    removeItem: key => values.delete(key),
+    setItem: (key, value) => values.set(key, value),
+  };
+  globalThis.fetch = async (url, options) => {
+    calls.push({ method: options.method, url });
+    if (calls.length === 1) {
+      return new Response('{"detail":"claim does not exist"}', {
+        headers: { 'Content-Type': 'application/json' }, status: 404,
+      });
+    }
+    return new Response(JSON.stringify({
+      character_id: 'character:1', controller_id: 'controller:new', generation: 1,
+      id: 'claim:new',
+    }), {
+      headers: { 'Content-Type': 'application/json', 'X-Bunnyland-Claim-Secret': 'secret:new' },
+      status: 201,
+    });
+  };
+  try {
+    const control = await claimCharacter('http://server.test', 'character:1', 'client');
+    assert.deepEqual(calls, [
+      { method: 'PUT', url: 'http://server.test/play/claims/claim%3Aold' },
+      { method: 'POST', url: 'http://server.test/play/claims' },
+    ]);
+    assert.equal(control.claimId, 'claim:new');
+    assert.equal(JSON.parse(values.get('client.claim.character:1')).claimId, 'claim:new');
+    assert.equal(isClaimNotFoundError(new ApiError('missing', 404)), true);
+    assert.equal(isClaimNotFoundError(new ApiError('forbidden', 403)), false);
+  } finally {
+    globalThis.fetch = previousFetch;
+    globalThis.localStorage = previousLocalStorage;
+    globalThis.location = previousLocation;
+  }
+});
+
 test('server admins can register custom theme options', () => {
   assert.deepEqual(registerThemeOption({ value: 'server-night', label: 'Server Night' }), {
     value: 'server-night',
@@ -547,6 +596,7 @@ test('browser asset globals stay compatible with static clients', async () => {
     },
     localStorage: {
       getItem: key => values.get(key) || null,
+      removeItem: key => values.delete(key),
       setItem: (key, value) => values.set(key, value),
     },
     URL,
@@ -569,6 +619,28 @@ test('browser asset globals stay compatible with static clients', async () => {
   assert.equal(context.BunnylandUI.currentTheme(), 'asset-linked');
   assert.equal(classes.has('bl-theme-asset-linked'), true);
   assert.equal(values.get(THEME_KEY), 'asset-linked');
+
+  const claimCalls = [];
+  context.fetch = async (url, options) => {
+    claimCalls.push({ method: options.method, url });
+    if (claimCalls.length === 1) {
+      return {
+        headers: { get: () => null }, json: async () => ({ detail: 'claim does not exist' }),
+        ok: false, status: 404,
+      };
+    }
+    return {
+      headers: { get: name => name === 'X-Bunnyland-Claim-Secret' ? 'secret:new' : null },
+      json: async () => ({ character_id: 'character:1', controller_id: 'controller:new', id: 'claim:new' }),
+      ok: true, status: 201,
+    };
+  };
+  const claimed = await context.BunnylandPlay.claimWebController('http://example.test', {
+    character_id: 'character:1', claim_id: 'claim:old', client_id: 'client:1',
+  }, { claimId: 'claim:old', claimSecret: 'secret:old' });
+  assert.equal(claimed.claim_id, 'claim:new');
+  assert.equal(claimed.claim_secret, 'secret:new');
+  assert.deepEqual(claimCalls.map(call => call.method), ['PUT', 'POST']);
 });
 
 test('gallery helpers render images with the correct spelling', () => {
