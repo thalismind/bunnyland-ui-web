@@ -44,6 +44,7 @@ import { renderGalleryItems } from '../dist/player-widgets.js';
 
 test('shared application root preserves the bounded viewport flex chain', () => {
   const css = fs.readFileSync('assets/bunnyland-ui.css', 'utf8');
+  const js = fs.readFileSync('assets/bunnyland-ui.js', 'utf8');
   const bodyRule = css.match(/body\s*\{([^}]+)\}/)?.[1] || '';
   const rule = css.match(/:where\(body > #app\)\s*\{([^}]+)\}/)?.[1] || '';
 
@@ -57,6 +58,16 @@ test('shared application root preserves the bounded viewport flex chain', () => 
 
   const buttonRule = css.match(/\nbutton\s*\{([^}]+)\}/)?.[1] || '';
   assert.match(buttonRule, /line-height:\s*1\.2/);
+
+  const toolbarRule = css.match(/\.toolbar-row\s*\{([^}]+)\}/)?.[1] || '';
+  const statusRule = css.match(/#api-status\s*\{([^}]+)\}/)?.[1] || '';
+  assert.match(toolbarRule, /flex-wrap:\s*wrap/);
+  assert.match(toolbarRule, /min-width:\s*0/);
+  assert.match(css, /\.toolbar-row \+ \.toolbar-row/);
+  assert.match(css, /\.toolbar-heading\s*\{/);
+  assert.match(statusRule, /overflow-wrap:\s*anywhere/);
+  assert.match(statusRule, /white-space:\s*normal/);
+  assert.match(js, /new URL\(item\.href, clientMenuBaseUrl \|\| location\.href\)/);
 });
 
 function plain(value) {
