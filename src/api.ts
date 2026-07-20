@@ -9,7 +9,18 @@ export interface ControlClaimLike {
   clientId?: string;
 }
 
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
 let playerAuthHeader = '';
+const playerAuthListeners = new Set<() => void>();
 let browserClientId = typeof globalThis.crypto?.randomUUID === 'function'
   ? globalThis.crypto.randomUUID()
   : `web-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -85,7 +96,7 @@ export async function parseJsonResponse(res: Response): Promise<unknown> {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const message = typeof data === 'object' && data && 'detail' in data ? String(data.detail) : `HTTP ${res.status}`;
-    throw new Error(message);
+    throw new ApiError(message, res.status);
   }
   return data;
 }
@@ -121,11 +132,19 @@ export async function logout(base: string): Promise<unknown> {
 }
 
 export function setPlayerAuth(authHeader = ''): void {
-  playerAuthHeader = authHeader.startsWith('Bearer ') ? authHeader : '';
+  const next = authHeader.startsWith('Bearer ') ? authHeader : '';
+  if (next === playerAuthHeader) return;
+  playerAuthHeader = next;
+  for (const listener of playerAuthListeners) listener();
 }
 
 export function getPlayerAuth(): string {
   return playerAuthHeader;
+}
+
+export function subscribePlayerAuth(listener: () => void): () => void {
+  playerAuthListeners.add(listener);
+  return () => playerAuthListeners.delete(listener);
 }
 
 export function setClientId(clientId: string): void {
