@@ -12,6 +12,9 @@ import {
   claimHeaders,
   createPlayerLiveUpdates,
   drainNarratedEvents,
+  fetchCharacterProjection,
+  fetchClaimProjection,
+  fetchQueuedCommands,
   filterActions,
   getPlayerAuth,
   imageCompletions,
@@ -385,6 +388,39 @@ test('expired stored claims are replaced with a fresh claim', async () => {
   }
 });
 
+test('claim projections are fetched once and parsed for every player view', async () => {
+  const previousFetch = globalThis.fetch;
+  const previousLocation = globalThis.location;
+  let resolveFetch;
+  let calls = 0;
+  globalThis.location = new URL('http://server.test/client');
+  globalThis.fetch = () => {
+    calls += 1;
+    return new Promise(resolve => { resolveFetch = resolve; });
+  };
+  const control = {
+    characterId: 'character:1', claimId: 'claim:1', claimSecret: 'secret:1',
+    controllerId: 'controller:1', generation: 1,
+  };
+  try {
+    const characterRequest = fetchCharacterProjection('http://server.test', 'character:1', control);
+    const queueRequest = fetchQueuedCommands('http://server.test', 'character:1', control);
+    const bundleRequest = fetchClaimProjection('http://server.test', 'character:1', control);
+    assert.equal(calls, 1);
+    resolveFetch(new Response(JSON.stringify({
+      character_id: 'character:1', room: { id: 'room:1' }, commands: [{ command_id: 'queued:1' }],
+    }), { headers: { 'Content-Type': 'application/json' } }));
+    const [character, queued, bundle] = await Promise.all([characterRequest, queueRequest, bundleRequest]);
+    assert.equal(character.characterId, 'character:1');
+    assert.equal(queued.commands[0].command_id, 'queued:1');
+    assert.equal(bundle.character.characterId, 'character:1');
+    assert.equal(bundle.queued.commands[0].command_id, 'queued:1');
+  } finally {
+    globalThis.fetch = previousFetch;
+    globalThis.location = previousLocation;
+  }
+});
+
 test('server admins can register custom theme options', () => {
   assert.deepEqual(registerThemeOption({ value: 'server-night', label: 'Server Night' }), {
     value: 'server-night',
@@ -641,6 +677,28 @@ test('browser asset globals stay compatible with static clients', async () => {
   assert.equal(claimed.claim_id, 'claim:new');
   assert.equal(claimed.claim_secret, 'secret:new');
   assert.deepEqual(claimCalls.map(call => call.method), ['PUT', 'POST']);
+
+  let projectionCalls = 0;
+  context.fetch = async () => {
+    projectionCalls += 1;
+    return {
+      json: async () => ({
+        character_id: 'character:1', commands: [{ command_id: 'queued:1' }],
+        room: { id: 'room:1', entities: [] },
+      }),
+      ok: true, status: 200,
+    };
+  };
+  const control = { claimId: 'claim:new', claimSecret: 'secret:new' };
+  const [character, queued, room] = await Promise.all([
+    context.BunnylandPlay.fetchCharacterProjection('http://example.test', 'character:1', control),
+    context.BunnylandPlay.fetchQueuedCommands('http://example.test', 'character:1', control),
+    context.BunnylandPlay.fetchRoomProjection('http://example.test', 'room:1', 'character:1', control),
+  ]);
+  assert.equal(projectionCalls, 1);
+  assert.equal(character.characterId, 'character:1');
+  assert.equal(queued.commands[0].command_id, 'queued:1');
+  assert.equal(room.room.id, 'room:1');
 });
 
 test('gallery helpers render images with the correct spelling', () => {

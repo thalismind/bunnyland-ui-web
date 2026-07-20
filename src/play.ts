@@ -191,6 +191,11 @@ export interface QueuedProjection {
   commands: QueuedCommand[];
 }
 
+export interface ClaimProjectionBundle {
+  character: CharacterProjection | null;
+  queued: QueuedProjection | null;
+}
+
 export interface QueuedCommand {
   command_id?: string;
   command_type?: string;
@@ -550,6 +555,34 @@ export function isClaimNotFoundError(error: unknown): boolean {
   return error instanceof ApiError && error.status === 404;
 }
 
+const claimProjectionRequests = new Map<string, Promise<unknown>>();
+
+async function fetchClaimProjectionData(base: string, control: ControlClaim): Promise<unknown> {
+  const normalizedBase = assertSameOriginBase(base);
+  const key = `${normalizedBase}\0${control.claimId}\0${control.claimSecret}`;
+  const pending = claimProjectionRequests.get(key);
+  if (pending) return pending;
+  const request = sendJson(normalizedBase, `/play/claims/${encodeURIComponent(control.claimId)}/projection`, {
+    headers: claimHeaders(control),
+  });
+  claimProjectionRequests.set(key, request);
+  try {
+    return await request;
+  } finally {
+    if (claimProjectionRequests.get(key) === request) claimProjectionRequests.delete(key);
+  }
+}
+
+export async function fetchClaimProjection(base: string, characterId: string, control: ControlClaim | null = null): Promise<ClaimProjectionBundle> {
+  void characterId;
+  if (!control?.claimId) return { character: null, queued: null };
+  const data = await fetchClaimProjectionData(base, control);
+  return {
+    character: parseCharacterProjection(data),
+    queued: parseQueuedCommands(data),
+  };
+}
+
 export async function fetchCharacters(base: string): Promise<CharacterSummary[]> {
   const data = await sendJson(base, '/play/characters') as { characters?: unknown[] };
   return parseCharacterList(data).characters;
@@ -599,19 +632,11 @@ export async function claimCharacter(base: string, characterId: string, storageK
 }
 
 export async function fetchCharacterProjection(base: string, characterId: string, control: ControlClaim | null = null): Promise<CharacterProjection> {
-  void characterId;
-  if (!control?.claimId) return null as unknown as CharacterProjection;
-  return parseCharacterProjection(await sendJson(base, `/play/claims/${encodeURIComponent(control.claimId)}/projection`, {
-    headers: claimHeaders(control),
-  })) as CharacterProjection;
+  return (await fetchClaimProjection(base, characterId, control)).character as CharacterProjection;
 }
 
 export async function fetchQueuedCommands(base: string, characterId: string, control: ControlClaim | null = null): Promise<QueuedProjection> {
-  void characterId;
-  if (!control?.claimId) return null as unknown as QueuedProjection;
-  return parseQueuedCommands(await sendJson(base, `/play/claims/${encodeURIComponent(control.claimId)}/projection`, {
-    headers: claimHeaders(control),
-  })) as QueuedProjection;
+  return (await fetchClaimProjection(base, characterId, control)).queued as QueuedProjection;
 }
 
 export async function submitCommand(base: string, payload: unknown, control: ControlClaim | null = null): Promise<unknown> {
