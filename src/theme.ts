@@ -4,7 +4,7 @@ export const THEME_KEY = 'bunnyland.theme';
 export const THEME_CLASS_PREFIX = 'bl-theme-';
 export const COLOR_SCHEME_KEY = 'bunnyland.color-scheme';
 export const COLOR_SCHEME_CLASS_PREFIX = 'bl-color-scheme-';
-export const DEFAULT_THEME = 'purple-blue';
+export const DEFAULT_THEME = 'midnight';
 export const THEME_CHANGE_EVENT = 'bunnyland:themechange';
 
 export interface ThemeOption {
@@ -15,7 +15,7 @@ export interface ThemeOption {
 export type ColorScheme = 'auto' | 'dark' | 'light';
 
 export const DEFAULT_THEME_OPTIONS: ThemeOption[] = [
-  { value: 'purple-blue', label: 'Purple / Blue' },
+  { value: 'midnight', label: 'Midnight Blue / Lavender' },
   { value: 'candy', label: 'Candy Pink / Cyan' },
   { value: 'earth', label: 'Earth Green / Gold' },
   { value: 'ocean', label: 'Ocean Teal / Coral' },
@@ -29,8 +29,11 @@ const THEME_ALIASES: Record<string, string> = {
   anime: 'candy',
   'anime-dark': 'candy-dark',
   'anime-light': 'candy-light',
-  dark: 'purple-blue-dark',
-  light: 'purple-blue-light',
+  dark: 'midnight-dark',
+  light: 'midnight-light',
+  'purple-blue': 'midnight',
+  'purple-blue-dark': 'midnight-dark',
+  'purple-blue-light': 'midnight-light',
 };
 
 const COLOR_SCHEME_OPTIONS: ThemeOption[] = [

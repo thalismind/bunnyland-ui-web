@@ -41,7 +41,7 @@ async function loadThemes() {
     // dist not built yet — fall back to the documented palette list.
   }
   return [
-    { value: 'purple-blue', label: 'Purple / Blue' },
+    { value: 'midnight', label: 'Midnight Blue / Lavender' },
     { value: 'candy', label: 'Candy Pink / Cyan' },
     { value: 'earth', label: 'Earth Green / Gold' },
     { value: 'ocean', label: 'Ocean Teal / Coral' },

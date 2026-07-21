@@ -83,20 +83,26 @@ test('API and theme helpers normalize shared client state', () => {
     socketUrl('https://server.test/api/', '/admin/world/stream'),
     'wss://server.test/api/admin/world/stream',
   );
-  assert.equal(normalizeTheme('dark'), 'purple-blue');
+  assert.equal(normalizeTheme('dark'), 'midnight');
+  assert.equal(normalizeTheme('purple-blue'), 'midnight');
+  assert.equal(normalizeTheme('purple-blue-light'), 'midnight');
   assert.equal(normalizeTheme('anime-light'), 'candy');
-  assert.equal(normalizeTheme('nope'), 'purple-blue');
+  assert.equal(normalizeTheme('nope'), 'midnight');
 });
 
 test('built-in theme options expose palettes independently of color scheme', () => {
   assert.deepEqual(themeOptions().map(option => option.value), [
-    'purple-blue',
+    'midnight',
     'candy',
     'earth',
     'ocean',
     'sunset',
     'high-contrast',
   ]);
+  assert.deepEqual(themeOptions()[0], {
+    value: 'midnight',
+    label: 'Midnight Blue / Lavender',
+  });
   const css = fs.readFileSync('assets/bunnyland-ui.css', 'utf8');
   assert.match(css, /@media \(prefers-color-scheme: light\)/);
   assert.match(css, /\.bl-color-scheme-light/);

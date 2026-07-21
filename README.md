@@ -99,7 +99,7 @@ source directory or a checked-in tarball.
 The package owns the shared `--bl-*` CSS variables and theme selector helpers. Built-in
 palette names are:
 
-- `purple-blue`
+- `midnight`
 - `candy`
 - `earth`
 - `ocean`
@@ -110,8 +110,9 @@ Each palette follows `prefers-color-scheme` by default. The shared client menu c
 Dark or Light appearance, or return to Auto (System). Use `bindThemeSelect(select)` for
 palette selectors, `bindColorSchemeSelect(select)` for appearance selectors, and
 `setTheme(theme)` or `setColorScheme(scheme)` for direct changes. Old paired values such as
-`anime-light` continue to load as migration aliases (`candy` with Light forced). New colors
-should be added as CSS variables before clients depend on them.
+`anime-light` continue to load as migration aliases (`candy` with Light forced), as do the
+former `purple-blue` values (`midnight`). New colors should be added as CSS variables before
+clients depend on them.
 
 Deployments can add their own theme choices without changing this package:
 
