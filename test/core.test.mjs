@@ -73,6 +73,43 @@ test('shared application root preserves the bounded viewport flex chain', () => 
   assert.match(js, /new URL\(item\.href, clientMenuBaseUrl \|\| location\.href\)/);
 });
 
+test('shared navigation recommends Web TUI and separates player and admin tools', () => {
+  const css = fs.readFileSync('assets/bunnyland-ui.css', 'utf8');
+  const js = fs.readFileSync('assets/bunnyland-ui.js', 'utf8');
+
+  assert.ok(js.indexOf("href: 'web-tui.html'") < js.indexOf("href: 'toon-client.html'"));
+  assert.match(js, /group: 'Player clients'/);
+  assert.match(js, /group: 'Builder & admin'/);
+  assert.match(js, /recommended: true/);
+  assert.match(js, /client-menu-section-title/);
+  assert.match(js, /client-menu-recommended/);
+  assert.match(css, /\.client-menu-section-title\s*\{/);
+  assert.match(css, /\.client-menu-recommended\s*\{/);
+});
+
+test('shared browser UI exposes styled asynchronous dialogs', () => {
+  const css = fs.readFileSync('assets/bunnyland-ui.css', 'utf8');
+  const js = fs.readFileSync('assets/bunnyland-ui.js', 'utf8');
+
+  for (const helper of ['alertDialog', 'confirmDialog', 'credentialsDialog', 'promptDialog']) {
+    assert.match(js, new RegExp(`\\b${helper},`));
+  }
+  assert.match(css, /\.bl-dialog\s*\{/);
+  assert.match(css, /\.bl-dialog::backdrop/);
+  assert.doesNotMatch(fs.readFileSync('assets/bunnyland-api.js', 'utf8'), /window\.(?:alert|confirm|prompt)\s*\(/);
+});
+
+test('shared styles define every token they use and expose keyboard and player-mobile rules', () => {
+  const css = fs.readFileSync('assets/bunnyland-ui.css', 'utf8');
+  const defined = new Set([...css.matchAll(/(--bl-[a-z0-9-]+)\s*:/g)].map(match => match[1]));
+  const used = new Set([...css.matchAll(/var\((--bl-[a-z0-9-]+)/g)].map(match => match[1]));
+
+  assert.deepEqual([...used].filter(token => !defined.has(token)).sort(), []);
+  assert.match(css, /:where\(a, button, input, select, textarea, \[tabindex\]\):focus-visible/);
+  assert.match(css, /\.bl-page-web-tui[\s\S]*--bl-text-md:\s*16px/);
+  assert.match(css, /\.bl-page-web-repl[\s\S]*min-height:\s*44px/);
+});
+
 function plain(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -694,6 +731,9 @@ test('browser asset globals stay compatible with static clients', async () => {
     vm.runInContext(fs.readFileSync(file, 'utf8'), context, { filename: file });
   }
   assert.equal(typeof context.BunnylandUI.bindThemeSelect, 'function');
+  assert.equal(typeof context.BunnylandUI.confirmDialog, 'function');
+  assert.equal(typeof context.BunnylandUI.credentialsDialog, 'function');
+  assert.equal(typeof context.BunnylandUI.promptDialog, 'function');
   assert.equal(typeof context.BunnylandUI.setColorScheme, 'function');
   assert.equal(typeof context.BunnylandApi.normalizeBase, 'function');
   assert.equal(typeof context.BunnylandPlay.filterActions, 'function');
