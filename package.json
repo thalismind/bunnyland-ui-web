@@ -3,7 +3,7 @@
   "version": "0.2.0",
   "type": "module",
   "description": "Shared web UI helpers, themes, and widgets for Bunnyland browser clients.",
-  "license": "UNLICENSED",
+  "license": "AGPL-3.0-or-later",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/thalismind/bunnyland-ui-web.git"

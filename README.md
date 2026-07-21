@@ -204,3 +204,8 @@ npm run check
 
 That runs ESLint, the Vite 8 library build, TypeScript declaration generation, Node test
 coverage, and the Preact component tests in a browser-like DOM.
+
+## License
+
+Licensed under the GNU Affero General Public License v3.0 or later. See
+[LICENSE](LICENSE).
