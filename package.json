@@ -4,8 +4,18 @@
   "type": "module",
   "description": "Shared web UI helpers, themes, and widgets for Bunnyland browser clients.",
   "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thalismind/bunnyland-ui-web.git"
+  },
+  "homepage": "https://github.com/thalismind/bunnyland-ui-web#readme",
+  "bugs": {
+    "url": "https://github.com/thalismind/bunnyland-ui-web/issues"
+  },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "provenance": true,
+    "registry": "https://registry.npmjs.org/"
   },
   "sideEffects": [
     "./assets/*.css",
@@ -65,6 +75,7 @@
     "test:coverage": "node --test --experimental-test-coverage",
     "test:components": "vitest run",
     "check": "npm run lint && npm run build && npm run test:coverage && npm run test:components",
+    "check:release-tag": "node scripts/check-release-tag.mjs",
     "prepack": "npm run build",
     "pack:artifact": "node scripts/package-artifact.mjs",
     "storybook:bundle": "vite build --config vite.storybook.config.ts",

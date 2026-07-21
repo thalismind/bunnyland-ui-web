@@ -60,9 +60,28 @@ it. The library build externalizes `preact` and `preact/hooks` rather than bundl
 copy. See the canonical [Bunnyland web design language](docs/developer/design-language.md)
 for component boundaries, interaction states, and migration rules.
 
-## Versioned Consumer Artifact
+## Package Releases
 
-Build the standalone npm tarball with:
+Stable GitHub releases publish the matching package version to the public npm registry with
+provenance. The release tag must exactly match `v<package.json version>`; for example,
+package version `0.2.0` is published from tag `v0.2.0`. The dedicated `publish.yml` workflow
+runs the complete package gate again before publishing.
+
+The first publication needs a granular npm automation token with access to the `@bunnyland`
+scope in the repository's `NPM_TOKEN` Actions secret. Once the package exists, configure its
+npm trusted publisher with organization `thalismind`, repository `bunnyland-ui-web`, workflow
+`publish.yml`, and the `npm publish` action. Then revoke the bootstrap token; the same
+workflow uses GitHub Actions OIDC and automatically attaches npm provenance.
+
+Consumers should pin an exact registry version:
+
+```sh
+npm install --save-exact @bunnyland/ui-web@0.2.0 preact
+```
+
+## Versioned Package Artifact
+
+Build a standalone npm tarball for local package inspection with:
 
 ```sh
 npm ci
@@ -71,14 +90,9 @@ npm run pack:artifact
 
 The output is `artifacts/bunnyland-ui-web-<version>.tgz`. It contains `package.json`, typed
 `dist/` entry points, legacy `assets/`, source maps, and documentation, and has no dependency
-on an adjacent checkout. A consumer can pin that exact artifact:
-
-```sh
-npm install ./artifacts/bunnyland-ui-web-0.2.0.tgz preact
-```
-
-CI uploads the versioned tarball for every checked revision. Release consumers should pin a
-published package version or immutable tarball checksum, never a sibling source directory.
+on an adjacent checkout. CI uploads this tarball for every checked revision as a diagnostic
+artifact. Release consumers use the exact published registry version, never an adjacent
+source directory or a checked-in tarball.
 
 ## Themes
 
