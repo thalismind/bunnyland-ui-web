@@ -31,10 +31,12 @@ Colors, spacing, typography, radii, overlays, and semantic states derive from `-
 custom properties. Application CSS may compose these tokens but must not hard-code a
 parallel palette.
 
-The six built-in themes are paired dark/light palettes. Deployment themes register a
-validated option and provide a matching `:root.bl-theme-<value>` token block. Theme choice
-is stored under `bunnyland.theme`, reflected in `data-theme`, and broadcast with the
-`bunnyland:themechange` event.
+The six built-in palettes each provide dark and light tokens. They follow
+`prefers-color-scheme` unless the user forces an appearance in the client menu. Deployment
+themes register a validated option and provide a matching `:root.bl-theme-<value>` token
+block. Palette choice is stored under `bunnyland.theme`; an Auto, Dark, or Light override is
+stored under `bunnyland.color-scheme`. Both are reflected on the root element and broadcast
+with the `bunnyland:themechange` event.
 
 Full-screen applications use a flex column rooted at `body > #app`. The body uses the
 dynamic viewport height, with a `100vh` fallback, while the application work surface and

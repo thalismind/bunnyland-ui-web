@@ -41,12 +41,12 @@ async function loadThemes() {
     // dist not built yet — fall back to the documented palette list.
   }
   return [
-    { value: 'purple-blue-dark', label: 'Purple / Blue Dark' },
-    { value: 'purple-blue-light', label: 'Purple / Blue Light' },
-    { value: 'anime-dark', label: 'Anime Pink / Cyan Dark' },
-    { value: 'anime-light', label: 'Anime Pink / Cyan Light' },
-    { value: 'earth-dark', label: 'Earth Green / Gold Dark' },
-    { value: 'earth-light', label: 'Earth Green / Gold Light' },
+    { value: 'purple-blue', label: 'Purple / Blue' },
+    { value: 'candy', label: 'Candy Pink / Cyan' },
+    { value: 'earth', label: 'Earth Green / Gold' },
+    { value: 'ocean', label: 'Ocean Teal / Coral' },
+    { value: 'sunset', label: 'Sunset Orange / Plum' },
+    { value: 'high-contrast', label: 'High Contrast' },
   ];
 }
 
@@ -98,13 +98,13 @@ async function launchBrowser() {
   }
 }
 
-function galleryHtml(themes) {
-  const cards = themes.map(theme => `
+function galleryHtml(variants) {
+  const cards = variants.map(variant => `
       <figure class="shot">
-        <a href="index.html?theme=${encodeURIComponent(theme.value)}">
-          <img src="screenshots/${encodeURIComponent(theme.value)}.png" alt="Storybook in the ${theme.label} theme" loading="lazy" />
+        <a href="index.html?theme=${encodeURIComponent(variant.theme)}&amp;scheme=${variant.scheme}">
+          <img src="screenshots/${encodeURIComponent(variant.value)}.png" alt="Storybook in the ${variant.label} theme" loading="lazy" />
         </a>
-        <figcaption><strong>${theme.label}</strong><span>${theme.value}</span></figcaption>
+        <figcaption><strong>${variant.label}</strong><span>${variant.value}</span></figcaption>
       </figure>`).join('');
   return `<!doctype html>
 <html lang="en">
@@ -131,8 +131,8 @@ function galleryHtml(themes) {
     <div class="wrap">
       <h1>🐰 Bunnyland UI Web — Storybook Screenshots</h1>
       <p class="lede">
-        Every shared component rendered across all six themes. Click any shot to open the
-        live, interactive storybook in that theme.
+        Every shared component rendered across all six palettes in dark and light modes.
+        Click any shot to open the live, interactive storybook in that appearance.
         <a href="index.html">Open the live storybook →</a>
         &nbsp;·&nbsp;
         <a href="storybook.zip" download>Download ZIP (offline bundle)</a>
@@ -236,6 +236,12 @@ async function writeZip(files) {
 
 async function main() {
   const themes = await loadThemes();
+  const variants = themes.flatMap(theme => ['dark', 'light'].map(scheme => ({
+    label: `${theme.label} ${scheme === 'dark' ? 'Dark' : 'Light'}`,
+    scheme,
+    theme: theme.value,
+    value: `${theme.value}-${scheme}`,
+  })));
   await assembleOutput();
 
   const server = await startServer();
@@ -245,18 +251,27 @@ async function main() {
   const browser = await launchBrowser();
   const page = await browser.newPage({ viewport: { width: 1200, height: 900 }, deviceScaleFactor: 2 });
 
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto(`${base}/index.html?theme=ocean&scheme=auto`, { waitUntil: 'networkidle' });
+  await page.waitForFunction(() => window.__storybookReady === true && window.__preactStoryReady === true);
+  const autoDarkBackground = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--bl-bg'));
+  await page.emulateMedia({ colorScheme: 'light' });
+  const autoLightBackground = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--bl-bg'));
+  if (autoDarkBackground === autoLightBackground) throw new Error('automatic color scheme did not change theme tokens');
+  process.stdout.write('verified prefers-color-scheme auto mode\n');
+
   const captured = [];
-  for (const theme of themes) {
-    await page.goto(`${base}/index.html?theme=${encodeURIComponent(theme.value)}`, { waitUntil: 'networkidle' });
+  for (const variant of variants) {
+    await page.goto(`${base}/index.html?theme=${encodeURIComponent(variant.theme)}&scheme=${variant.scheme}`, { waitUntil: 'networkidle' });
     await page.waitForFunction(() => window.__storybookReady === true && window.__preactStoryReady === true);
-    const file = join(shotDir, `${theme.value}.png`);
+    const file = join(shotDir, `${variant.value}.png`);
     await page.screenshot({ path: file, fullPage: true });
-    captured.push(`${theme.value}.png`);
-    process.stdout.write(`captured ${theme.value}\n`);
+    captured.push(`${variant.value}.png`);
+    process.stdout.write(`captured ${variant.value}\n`);
   }
 
   // Overlay shot: client menu open on the default theme.
-  await page.goto(`${base}/index.html?theme=${encodeURIComponent(themes[0].value)}&open=menu`, { waitUntil: 'networkidle' });
+  await page.goto(`${base}/index.html?theme=${encodeURIComponent(themes[0].value)}&scheme=dark&open=menu`, { waitUntil: 'networkidle' });
   await page.waitForFunction(() => window.__storybookReady === true && window.__preactStoryReady === true);
   await page.waitForSelector('#client-menu-dialog:not(.hidden)');
   await page.screenshot({ path: join(shotDir, 'client-menu.png'), fullPage: true });
@@ -266,7 +281,7 @@ async function main() {
   await browser.close();
   await new Promise(resolve => server.close(resolve));
 
-  await writeFile(join(outDir, 'screenshots.html'), galleryHtml(themes));
+  await writeFile(join(outDir, 'screenshots.html'), galleryHtml(variants));
 
   // Bundle the whole browsable directory (HTML + CSS + JS + screenshots) into a ZIP so it
   // can be downloaded and opened offline from file://. Drop a copy inside the served output

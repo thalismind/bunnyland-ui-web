@@ -36,6 +36,9 @@ import {
   setPlayerAuth,
   socketUrl,
   bindThemeSelect,
+  COLOR_SCHEME_KEY,
+  currentColorScheme,
+  setColorScheme,
   THEME_KEY,
   themeFromSearch,
   themeOptions,
@@ -80,8 +83,24 @@ test('API and theme helpers normalize shared client state', () => {
     socketUrl('https://server.test/api/', '/admin/world/stream'),
     'wss://server.test/api/admin/world/stream',
   );
-  assert.equal(normalizeTheme('dark'), 'purple-blue-dark');
-  assert.equal(normalizeTheme('nope'), 'purple-blue-dark');
+  assert.equal(normalizeTheme('dark'), 'purple-blue');
+  assert.equal(normalizeTheme('anime-light'), 'candy');
+  assert.equal(normalizeTheme('nope'), 'purple-blue');
+});
+
+test('built-in theme options expose palettes independently of color scheme', () => {
+  assert.deepEqual(themeOptions().map(option => option.value), [
+    'purple-blue',
+    'candy',
+    'earth',
+    'ocean',
+    'sunset',
+    'high-contrast',
+  ]);
+  const css = fs.readFileSync('assets/bunnyland-ui.css', 'utf8');
+  assert.match(css, /@media \(prefers-color-scheme: light\)/);
+  assert.match(css, /\.bl-color-scheme-light/);
+  assert.match(css, /\.bl-color-scheme-dark/);
 });
 
 test('API helpers include player auth in claim headers', () => {
@@ -452,6 +471,7 @@ test('config defaults and shared links can choose custom themes', () => {
     { value: 'linked-theme', label: 'Linked Theme' },
   ]);
   assert.equal(themeFromSearch('?theme=linked-theme'), 'linked-theme');
+  assert.equal(themeFromSearch('?theme=anime-light'), 'candy');
   assert.equal(themeFromSearch('?theme=missing-theme'), null);
 
   const classes = new Set(['bl-theme-purple-blue-dark']);
@@ -480,6 +500,9 @@ test('config defaults and shared links can choose custom themes', () => {
     assert.equal(initTheme(globalThis.document.documentElement, 'site-default', '?theme=linked-theme'), 'linked-theme');
     assert.equal(values.get(THEME_KEY), 'linked-theme');
     assert.equal(globalThis.document.documentElement.dataset.theme, 'linked-theme');
+
+    values.set(THEME_KEY, 'site-default');
+    assert.equal(initTheme(globalThis.document.documentElement, 'linked-theme', '?theme=missing-theme'), 'site-default');
   } finally {
     globalThis.document = previousDocument;
     globalThis.localStorage = previousLocalStorage;
@@ -513,14 +536,22 @@ test('theme select restores the stored theme on page load', () => {
       addEventListener: (event, handler) => listeners.set(event, handler),
     };
     bindThemeSelect(select);
-    assert.equal(select.value, 'earth-light');
-    assert.equal(globalThis.document.documentElement.dataset.theme, 'earth-light');
-    assert.equal(classes.has('bl-theme-earth-light'), true);
+    assert.equal(select.value, 'earth');
+    assert.equal(globalThis.document.documentElement.dataset.theme, 'earth');
+    assert.equal(globalThis.document.documentElement.dataset.colorScheme, 'light');
+    assert.equal(classes.has('bl-theme-earth'), true);
+    assert.equal(classes.has('bl-color-scheme-light'), true);
+    assert.equal(values.get(COLOR_SCHEME_KEY), 'light');
     registerThemeOption({ value: 'server-dusk', label: 'Server Dusk' });
     assert.match(select.innerHTML, /server-dusk/);
-    select.value = 'anime-dark';
+    select.value = 'candy';
     listeners.get('change')();
-    assert.equal(values.get(THEME_KEY), 'anime-dark');
+    assert.equal(values.get(THEME_KEY), 'candy');
+
+    setColorScheme('auto');
+    assert.equal(currentColorScheme(), 'auto');
+    assert.equal(classes.has('bl-color-scheme-light'), false);
+    assert.equal(values.get(COLOR_SCHEME_KEY), 'auto');
   } finally {
     globalThis.document = previousDocument;
     globalThis.localStorage = previousLocalStorage;
@@ -657,6 +688,7 @@ test('browser asset globals stay compatible with static clients', async () => {
     vm.runInContext(fs.readFileSync(file, 'utf8'), context, { filename: file });
   }
   assert.equal(typeof context.BunnylandUI.bindThemeSelect, 'function');
+  assert.equal(typeof context.BunnylandUI.setColorScheme, 'function');
   assert.equal(typeof context.BunnylandApi.normalizeBase, 'function');
   assert.equal(typeof context.BunnylandPlay.filterActions, 'function');
   assert.equal(typeof context.BunnylandPlay.fetchCharacterProfile, 'function');
@@ -666,6 +698,9 @@ test('browser asset globals stay compatible with static clients', async () => {
   assert.equal(context.BunnylandUI.currentTheme(), 'asset-linked');
   assert.equal(classes.has('bl-theme-asset-linked'), true);
   assert.equal(values.get(THEME_KEY), 'asset-linked');
+  assert.equal(context.BunnylandUI.setColorScheme('light'), 'light');
+  assert.equal(context.BunnylandUI.currentColorScheme(), 'light');
+  assert.equal(classes.has('bl-color-scheme-light'), true);
 
   const claimCalls = [];
   context.fetch = async (url, options) => {

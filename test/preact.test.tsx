@@ -14,11 +14,12 @@ import {
   ToolbarBrand,
   ToolbarRow,
 } from '../src/preact';
-import { currentTheme, registerThemeOption, setTheme } from '../src/theme';
+import { currentColorScheme, currentTheme, registerThemeOption, setTheme } from '../src/theme';
 
 afterEach(() => {
   cleanup();
   document.documentElement.className = '';
+  document.documentElement.removeAttribute('data-color-scheme');
   document.documentElement.removeAttribute('data-theme');
   localStorage.clear();
 });
@@ -80,7 +81,8 @@ describe('shared Preact controls', () => {
     expect(document.documentElement.classList.contains('bl-theme-test-night')).toBe(true);
 
     act(() => { setTheme('anime-light'); });
-    expect((screen.getByLabelText('Theme') as HTMLSelectElement).value).toBe('anime-light');
+    expect((screen.getByLabelText('Theme') as HTMLSelectElement).value).toBe('candy');
+    expect(currentColorScheme()).toBe('light');
   });
 
   it('composes semantic chrome without changing caller classes', () => {

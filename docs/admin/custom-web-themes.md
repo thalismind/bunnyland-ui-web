@@ -91,6 +91,11 @@ Place that CSS after `assets/bunnyland-ui.css`, or in a separate stylesheet load
 it. Existing pages can keep using `bindThemeSelect()` and the client menu; the shared
 theme helpers refresh selectors after custom themes are registered.
 
+This example is intentionally dark-only. A custom theme that supports automatic appearance
+must also define its light tokens inside `@media (prefers-color-scheme: light)` and under a
+`.bl-color-scheme-light` override; exclude `.bl-color-scheme-dark` from its media-query
+selector. Built-in palettes already provide both modes.
+
 ## Validate
 
 After deployment:

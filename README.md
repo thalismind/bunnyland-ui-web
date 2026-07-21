@@ -82,16 +82,22 @@ published package version or immutable tarball checksum, never a sibling source 
 
 ## Themes
 
-The package owns the shared `--bl-*` CSS variables and the theme selector helpers. Theme names are:
+The package owns the shared `--bl-*` CSS variables and theme selector helpers. Built-in
+palette names are:
 
-- `purple-blue-dark`
-- `purple-blue-light`
-- `anime-dark`
-- `anime-light`
-- `earth-dark`
-- `earth-light`
+- `purple-blue`
+- `candy`
+- `earth`
+- `ocean`
+- `sunset`
+- `high-contrast`
 
-Use `bindThemeSelect(select)` for client selectors and `setTheme(theme)` for direct theme changes. New colors should be added as CSS variables before clients depend on them.
+Each palette follows `prefers-color-scheme` by default. The shared client menu can force
+Dark or Light appearance, or return to Auto (System). Use `bindThemeSelect(select)` for
+palette selectors, `bindColorSchemeSelect(select)` for appearance selectors, and
+`setTheme(theme)` or `setColorScheme(scheme)` for direct changes. Old paired values such as
+`anime-light` continue to load as migration aliases (`candy` with Light forced). New colors
+should be added as CSS variables before clients depend on them.
 
 Deployments can add their own theme choices without changing this package:
 

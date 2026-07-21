@@ -2,7 +2,9 @@ import { escapeHtml, storageGet, storageSet } from './widgets';
 
 export const THEME_KEY = 'bunnyland.theme';
 export const THEME_CLASS_PREFIX = 'bl-theme-';
-export const DEFAULT_THEME = 'purple-blue-dark';
+export const COLOR_SCHEME_KEY = 'bunnyland.color-scheme';
+export const COLOR_SCHEME_CLASS_PREFIX = 'bl-color-scheme-';
+export const DEFAULT_THEME = 'purple-blue';
 export const THEME_CHANGE_EVENT = 'bunnyland:themechange';
 
 export interface ThemeOption {
@@ -10,28 +12,47 @@ export interface ThemeOption {
   label: string;
 }
 
+export type ColorScheme = 'auto' | 'dark' | 'light';
+
 export const DEFAULT_THEME_OPTIONS: ThemeOption[] = [
-  { value: 'purple-blue-dark', label: 'Purple / Blue Dark' },
-  { value: 'purple-blue-light', label: 'Purple / Blue Light' },
-  { value: 'anime-dark', label: 'Anime Pink / Cyan Dark' },
-  { value: 'anime-light', label: 'Anime Pink / Cyan Light' },
-  { value: 'earth-dark', label: 'Earth Green / Gold Dark' },
-  { value: 'earth-light', label: 'Earth Green / Gold Light' },
+  { value: 'purple-blue', label: 'Purple / Blue' },
+  { value: 'candy', label: 'Candy Pink / Cyan' },
+  { value: 'earth', label: 'Earth Green / Gold' },
+  { value: 'ocean', label: 'Ocean Teal / Coral' },
+  { value: 'sunset', label: 'Sunset Orange / Plum' },
+  { value: 'high-contrast', label: 'High Contrast' },
 ];
 
 export const THEME_OPTIONS: ThemeOption[] = DEFAULT_THEME_OPTIONS.map(option => ({ ...option }));
 
 const THEME_ALIASES: Record<string, string> = {
+  anime: 'candy',
+  'anime-dark': 'candy-dark',
+  'anime-light': 'candy-light',
   dark: 'purple-blue-dark',
   light: 'purple-blue-light',
 };
 
+const COLOR_SCHEME_OPTIONS: ThemeOption[] = [
+  { value: 'auto', label: 'Auto (System)' },
+  { value: 'dark', label: 'Dark' },
+  { value: 'light', label: 'Light' },
+];
+
 const THEME_VALUE_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 const boundThemeSelects = new Set<HTMLSelectElement>();
+const boundColorSchemeSelects = new Set<HTMLSelectElement>();
+
+function parseThemeSelection(name: string | null | undefined): { scheme: ColorScheme | null; theme: string } {
+  const raw = THEME_ALIASES[String(name || DEFAULT_THEME).trim()] || String(name || DEFAULT_THEME).trim();
+  if (isKnownTheme(raw)) return { theme: raw, scheme: null };
+  const match = raw.match(/^(.*)-(dark|light)$/);
+  if (match && isKnownTheme(match[1])) return { theme: match[1], scheme: match[2] as ColorScheme };
+  return { theme: raw, scheme: null };
+}
 
 function normalizeThemeValue(name: string | null | undefined): string {
-  const raw = String(name || DEFAULT_THEME).trim();
-  return THEME_ALIASES[raw] || raw;
+  return parseThemeSelection(name).theme;
 }
 
 function isKnownTheme(name: string): boolean {
@@ -57,6 +78,21 @@ function refreshThemeSelects(): void {
   for (const select of boundThemeSelects) renderThemeSelect(select);
 }
 
+function normalizeColorSchemeValue(name: string | null | undefined): ColorScheme {
+  return name === 'dark' || name === 'light' ? name : 'auto';
+}
+
+function renderColorSchemeSelect(select: HTMLSelectElement): void {
+  select.innerHTML = COLOR_SCHEME_OPTIONS.map(option => `
+    <option value="${option.value}">${option.label}</option>
+  `).join('');
+  select.value = currentColorScheme();
+}
+
+function refreshColorSchemeSelects(): void {
+  for (const select of boundColorSchemeSelects) renderColorSchemeSelect(select);
+}
+
 export function themeFromSearch(search = globalThis.location?.search || ''): string | null {
   const requested = new URLSearchParams(search).get('theme');
   if (!requested) return null;
@@ -73,6 +109,18 @@ export function currentTheme(root: HTMLElement = document.documentElement): stri
   return normalizeTheme(root.dataset.theme);
 }
 
+export function currentColorScheme(root: HTMLElement = document.documentElement): ColorScheme {
+  return normalizeColorSchemeValue(root.dataset.colorScheme);
+}
+
+function dispatchThemeChange(root: HTMLElement): void {
+  if (typeof root.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+    root.dispatchEvent(new CustomEvent(THEME_CHANGE_EVENT, {
+      detail: { colorScheme: currentColorScheme(root), theme: currentTheme(root) },
+    }));
+  }
+}
+
 function applyTheme(theme: string, root: HTMLElement, persist: boolean): string {
   for (const className of [...root.classList]) {
     if (className.startsWith(THEME_CLASS_PREFIX)) root.classList.remove(className);
@@ -81,14 +129,30 @@ function applyTheme(theme: string, root: HTMLElement, persist: boolean): string 
   root.dataset.theme = theme;
   if (persist) storageSet(THEME_KEY, theme);
   refreshThemeSelects();
-  if (typeof root.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
-    root.dispatchEvent(new CustomEvent(THEME_CHANGE_EVENT, { detail: { theme } }));
-  }
+  dispatchThemeChange(root);
   return theme;
 }
 
+function applyColorScheme(scheme: ColorScheme, root: HTMLElement, persist: boolean): ColorScheme {
+  for (const className of [...root.classList]) {
+    if (className.startsWith(COLOR_SCHEME_CLASS_PREFIX)) root.classList.remove(className);
+  }
+  if (scheme !== 'auto') root.classList.add(`${COLOR_SCHEME_CLASS_PREFIX}${scheme}`);
+  root.dataset.colorScheme = scheme;
+  if (persist) storageSet(COLOR_SCHEME_KEY, scheme);
+  refreshColorSchemeSelects();
+  dispatchThemeChange(root);
+  return scheme;
+}
+
+export function setColorScheme(name: string, root: HTMLElement = document.documentElement): ColorScheme {
+  return applyColorScheme(normalizeColorSchemeValue(name), root, true);
+}
+
 export function setTheme(name: string, root: HTMLElement = document.documentElement): string {
-  const theme = normalizeTheme(name);
+  const selection = parseThemeSelection(name);
+  if (selection.scheme) applyColorScheme(selection.scheme, root, true);
+  const theme = normalizeTheme(selection.theme);
   return applyTheme(theme, root, true);
 }
 
@@ -97,17 +161,23 @@ export function initTheme(
   defaultTheme = DEFAULT_THEME,
   search = globalThis.location?.search || '',
 ): string {
+  const linkedValue = new URLSearchParams(search).get('theme');
   const linkedTheme = themeFromSearch(search);
-  if (linkedTheme) return applyTheme(linkedTheme, root, true);
-
   const stored = storageGet(THEME_KEY);
-  const requested = normalizeThemeValue(stored || defaultTheme || DEFAULT_THEME);
-  const theme = normalizeTheme(requested);
-  return applyTheme(theme, root, Boolean(stored) && isKnownTheme(requested));
+  const selection = parseThemeSelection((linkedTheme && linkedValue) || stored || defaultTheme || DEFAULT_THEME);
+  const storedScheme = storageGet(COLOR_SCHEME_KEY);
+  const scheme = selection.scheme || normalizeColorSchemeValue(storedScheme);
+  applyColorScheme(scheme, root, Boolean(selection.scheme || storedScheme));
+  const theme = normalizeTheme(selection.theme);
+  return applyTheme(theme, root, Boolean(linkedTheme || (stored && isKnownTheme(selection.theme))));
 }
 
 export function themeOptions(): ThemeOption[] {
   return THEME_OPTIONS.map(option => ({ ...option }));
+}
+
+export function colorSchemeOptions(): ThemeOption[] {
+  return COLOR_SCHEME_OPTIONS.map(option => ({ ...option }));
 }
 
 export function registerThemeOption(option: ThemeOption): ThemeOption | null {
@@ -137,6 +207,19 @@ export function bindThemeSelect(select: HTMLSelectElement | null): { setValue: (
     setValue(value: string): void {
       select.value = normalizeTheme(value);
       setTheme(select.value);
+    },
+  };
+}
+
+export function bindColorSchemeSelect(select: HTMLSelectElement | null): { setValue: (value: string) => void } | null {
+  if (!select) return null;
+  boundColorSchemeSelects.add(select);
+  renderColorSchemeSelect(select);
+  select.addEventListener('change', () => setColorScheme(select.value));
+  return {
+    setValue(value: string): void {
+      select.value = normalizeColorSchemeValue(value);
+      setColorScheme(select.value);
     },
   };
 }

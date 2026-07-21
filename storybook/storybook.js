@@ -15,6 +15,8 @@
     ui.setTheme(requestedTheme);
     if (themeSelect) themeSelect.value = ui.currentTheme();
   }
+  const requestedScheme = params.get('scheme');
+  if (requestedScheme) ui.setColorScheme(requestedScheme);
 
   // ── Color token swatches ────────────────────────────────────────────────────
   const swatchTokens = [
