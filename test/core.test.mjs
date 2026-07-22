@@ -94,8 +94,11 @@ test('shared browser UI exposes styled asynchronous dialogs', () => {
   for (const helper of ['alertDialog', 'confirmDialog', 'credentialsDialog', 'promptDialog']) {
     assert.match(js, new RegExp(`\\b${helper},`));
   }
+  assert.match(css, /dialog\s*\{[\s\S]*position:\s*fixed[\s\S]*inset:\s*0[\s\S]*margin:\s*auto[\s\S]*padding:\s*14px/);
+  assert.match(css, /dialog::backdrop\s*\{\s*background:\s*var\(--bl-overlay\)/);
+  assert.match(css, /dialog\[open\]:not\(:modal\)[\s\S]*100vmax\s+var\(--bl-overlay\)/);
+  assert.match(css, /input\[type=password\]/);
   assert.match(css, /\.bl-dialog\s*\{/);
-  assert.match(css, /\.bl-dialog::backdrop/);
   assert.doesNotMatch(fs.readFileSync('assets/bunnyland-api.js', 'utf8'), /window\.(?:alert|confirm|prompt)\s*\(/);
 });
 
