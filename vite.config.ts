@@ -26,6 +26,7 @@ export default defineConfig({
         chunkFileNames: 'chunks/[name]-[hash].js',
       },
     },
-    sourcemap: true,
+    // Do not ship original sources to production browsers.
+    sourcemap: false,
   },
 });
