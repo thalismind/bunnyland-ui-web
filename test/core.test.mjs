@@ -612,6 +612,7 @@ test('play helpers parse projections, filter actions, and label queued commands'
     world_epoch: 12,
     room: {
       id: 'room:1',
+      description: 'A clear route map hangs beside the door.',
       entities: [{ id: 'item:1', name: 'Brass Key', kind: 'item' }],
       exits: [{ id: 'room:2', direction: 'north', label: 'Hallway' }],
     },
@@ -626,6 +627,7 @@ test('play helpers parse projections, filter actions, and label queued commands'
   });
 
   assert.equal(projection.characterId, 'character:1');
+  assert.equal(projection.room.description, 'A clear route map hangs beside the door.');
   assert.equal(actionIcon(projection.actions[0]), '💬');
   assert.equal(actionIcon({ command_type: 'scan-network' }), '📡');
   assert.equal(filterActions(projection.actions, 'say')[0].command_type, 'say');

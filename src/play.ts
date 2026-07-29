@@ -169,6 +169,7 @@ export interface CharacterProjection {
   room: {
     id: string;
     title: string;
+    description?: string;
     biome: string;
     exits: { id: string; direction: string; label: string; locked: boolean }[];
     entities: unknown[];
@@ -734,6 +735,7 @@ export function parseCharacterProjection(data: unknown): CharacterProjection | n
     room: {
       id: String(room.id || ''),
       title: String(room.title || room.id || ''),
+      description: String(room.description || ''),
       biome: String(room.biome || 'unknown'),
       exits: ((room.exits || []) as unknown[]).map(exit => {
         const item = exit as Record<string, unknown>;
