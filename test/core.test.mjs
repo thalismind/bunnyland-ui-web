@@ -264,7 +264,7 @@ test('player update transport authenticates in the first frame without URL secre
   assert.doesNotMatch(socket.url, /top-secret/);
   assert.deepEqual(JSON.parse(socket.sent[0]), {
     type: 'authenticate',
-    data: { token: null, claim_secret: 'top-secret', client_id: 'client-1' },
+    data: { token: null, client_id: 'client-1' },
   });
   socket.message({ type: 'mystery', data: {} });
   socket.message({ type: 'event', data: { event_type: 'Moved' } });
@@ -450,11 +450,13 @@ test('expired stored claims are replaced with a fresh claim', async () => {
   try {
     const control = await claimCharacter('http://server.test', 'character:1', 'client');
     assert.deepEqual(calls, [
-      { method: 'PUT', url: 'http://server.test/play/claims/claim%3Aold' },
+      { method: 'POST', url: 'http://server.test/play/claims/claim%3Aold/recover' },
       { method: 'POST', url: 'http://server.test/play/claims' },
     ]);
     assert.equal(control.claimId, 'claim:new');
-    assert.equal(JSON.parse(values.get('client.claim.character:1')).claimId, 'claim:new');
+    const stored = JSON.parse(values.get('client.claim.character:1'));
+    assert.equal(stored.claimId, 'claim:new');
+    assert.equal('claimSecret' in stored, false);
     assert.equal(isClaimNotFoundError(new ApiError('missing', 404)), true);
     assert.equal(isClaimNotFoundError(new ApiError('forbidden', 403)), false);
   } finally {
@@ -753,7 +755,13 @@ test('browser asset globals stay compatible with static clients', async () => {
 
   const claimCalls = [];
   context.fetch = async (url, options) => {
-    claimCalls.push({ method: options.method, url });
+    claimCalls.push({
+      body: options.body ? JSON.parse(options.body) : null,
+      credentials: options.credentials,
+      headers: options.headers,
+      method: options.method,
+      url,
+    });
     if (claimCalls.length === 1) {
       return {
         headers: { get: () => null }, json: async () => ({ detail: 'claim does not exist' }),
@@ -768,10 +776,32 @@ test('browser asset globals stay compatible with static clients', async () => {
   };
   const claimed = await context.BunnylandPlay.claimWebController('http://example.test', {
     character_id: 'character:1', claim_id: 'claim:old', client_id: 'client:1',
-  }, { claimId: 'claim:old', claimSecret: 'secret:old' });
+  }, { claimId: 'claim:old', clientId: 'client:1' });
   assert.equal(claimed.claim_id, 'claim:new');
-  assert.equal(claimed.claim_secret, 'secret:new');
-  assert.deepEqual(claimCalls.map(call => call.method), ['PUT', 'POST']);
+  assert.equal('claim_secret' in claimed, false);
+  assert.deepEqual(claimCalls.map(call => call.method), ['POST', 'POST']);
+  assert.deepEqual(claimCalls.map(call => call.credentials), ['include', 'include']);
+  assert.equal(claimCalls[0].body, null);
+  assert.equal(claimCalls[0].headers['X-Bunnyland-Claim-Secret'], undefined);
+  assert.equal(claimCalls[1].body.delivery, 'cookie');
+  assert.equal(claimCalls[1].body.character_id, 'character:1');
+
+  let firstSocket;
+  const updates = context.BunnylandPlay.openPlayerUpdates({
+    base: 'http://example.test',
+    characterId: 'character:1',
+    control: { claimId: claimed.claim_id, clientId: 'client:1' },
+    onFrame: () => {},
+    webSocketFactory: url => (firstSocket = new FakePlayerSocket(url)),
+  });
+  assert.equal(updates, firstSocket);
+  assert.equal(firstSocket.url, 'ws://example.test/play/claims/claim%3Anew/stream');
+  firstSocket.open();
+  assert.deepEqual(JSON.parse(firstSocket.sent[0]), {
+    type: 'authenticate',
+    data: { token: null, client_id: 'client:1' },
+  });
+  assert.doesNotMatch(firstSocket.sent[0], /claim|secret/i);
 
   let projectionCalls = 0;
   context.fetch = async () => {

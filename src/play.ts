@@ -122,7 +122,7 @@ export interface ControlClaim {
   controllerId: string;
   generation: number;
   claimId: string;
-  claimSecret: string;
+  claimSecret?: string;
   clientId: string;
   active?: boolean;
 }
@@ -294,7 +294,6 @@ export function openPlayerUpdates(options: OpenPlayerUpdatesOptions): PlayerUpda
       type: 'authenticate',
       data: {
         token: getPlayerAuth().startsWith('Bearer ') ? getPlayerAuth().slice(7) : null,
-        claim_secret: options.control?.claimSecret || null,
         client_id: options.control?.clientId || getClientId(),
       },
     }));
@@ -519,29 +518,36 @@ export function persistentClientId(key = 'bunnyland.clientId', prefix = 'web'): 
 
 export function storedClaimControl(key: string, characterId: string): ControlClaim | null {
   try {
-    const data = JSON.parse(storageGet(claimStorageKey(key, characterId)) || '{}') as Record<string, unknown>;
-    if (!data.controllerId || !data.claimId || !data.claimSecret) return null;
-    return {
+    const storageKey = claimStorageKey(key, characterId);
+    const data = JSON.parse(storageGet(storageKey) || '{}') as Record<string, unknown>;
+    if (!data.controllerId || !data.claimId) {
+      storageRemove(storageKey);
+      return null;
+    }
+    const control = {
       characterId,
       controllerId: String(data.controllerId),
       generation: Number(data.generation || 0),
       claimId: String(data.claimId),
-      claimSecret: String(data.claimSecret),
       clientId: String(data.clientId || getClientId()),
       active: data.active !== false,
     };
+    if (data.claimSecret || data.claim_secret) {
+      storageSet(storageKey, JSON.stringify(control));
+    }
+    return control;
   } catch (_err) {
+    storageRemove(claimStorageKey(key, characterId));
     return null;
   }
 }
 
 export function storeClaimControl(key: string, control: ControlClaim): void {
-  if (!key || !control.characterId || !control.claimId || !control.claimSecret) return;
+  if (!key || !control.characterId || !control.claimId) return;
   storageSet(claimStorageKey(key, control.characterId), JSON.stringify({
     controllerId: control.controllerId,
     generation: control.generation,
     claimId: control.claimId,
-    claimSecret: control.claimSecret,
     clientId: control.clientId,
     active: control.active !== false,
   }));
@@ -559,7 +565,7 @@ const claimProjectionRequests = new Map<string, Promise<unknown>>();
 
 async function fetchClaimProjectionData(base: string, control: ControlClaim): Promise<unknown> {
   const normalizedBase = assertSameOriginBase(base);
-  const key = `${normalizedBase}\0${control.claimId}\0${control.claimSecret}`;
+  const key = `${normalizedBase}\0${control.claimId}`;
   const pending = claimProjectionRequests.get(key);
   if (pending) return pending;
   const request = sendJson(normalizedBase, `/play/claims/${encodeURIComponent(control.claimId)}/projection`, {
@@ -597,18 +603,19 @@ export async function claimCharacter(base: string, characterId: string, storageK
   setClientId(clientId);
   const headers = mergePlayerHeaders(claimHeaders({ ...stored, clientId }));
   const path = stored?.claimId
-    ? `/play/claims/${encodeURIComponent(stored.claimId)}`
+    ? `/play/claims/${encodeURIComponent(stored.claimId)}/recover`
     : '/play/claims';
   let response: Response;
   let data: Record<string, unknown>;
   try {
     response = await fetch(`${assertSameOriginBase(base)}${path}`, {
-      method: stored?.claimId ? 'PUT' : 'POST',
+      method: 'POST',
       headers,
       credentials: 'include',
       ...(!stored?.claimId ? {
         body: JSON.stringify({
           character_id: characterId,
+          delivery: 'cookie',
           fallback_controller: options.fallbackController || 'suspend',
           timeout_seconds: options.timeoutSeconds || 1800,
           label: options.label || 'web',
@@ -621,9 +628,8 @@ export async function claimCharacter(base: string, characterId: string, storageK
     clearClaimControl(storageKey, characterId);
     return claimCharacter(base, characterId, storageKey, options);
   }
-  const claimSecret = response.headers.get('X-Bunnyland-Claim-Secret') || stored?.claimSecret || '';
   const control = controlFromResponse(
-    { ...data, claim_secret: claimSecret, client_id: clientId },
+    { ...data, client_id: clientId },
     characterId,
     { active: data.control !== 'fallback' },
   ) as ControlClaim;
@@ -776,7 +782,7 @@ export function controlFromResponse(data: unknown, fallbackCharacterId = '', { a
     controllerId: String(raw.controller_id || ''),
     generation: Number(raw.controller_generation ?? raw.generation ?? 0),
     claimId: String(raw.id || raw.claim_id || ''),
-    claimSecret: String(raw.claim_secret || ''),
+    ...(raw.claim_secret ? { claimSecret: String(raw.claim_secret) } : {}),
     clientId: String(raw.client_id || getClientId()),
     active,
   };
