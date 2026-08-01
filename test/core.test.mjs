@@ -85,6 +85,10 @@ test('shared navigation recommends Web TUI and separates player and admin tools'
   assert.match(js, /client-menu-recommended/);
   assert.match(css, /\.client-menu-section-title\s*\{/);
   assert.match(css, /\.client-menu-recommended\s*\{/);
+  assert.match(js, /config\?\.\['3dUrl'\]/);
+  assert.match(js, /containDialogFocus/);
+  assert.match(js, /clientMenuPreviousFocus\?\.focus/);
+  assert.match(js, /helpPreviousFocus\?\.focus/);
 });
 
 test('shared browser UI exposes styled asynchronous dialogs', () => {
@@ -111,6 +115,9 @@ test('shared styles define every token they use and expose keyboard and player-m
   assert.match(css, /:where\(a, button, input, select, textarea, \[tabindex\]\):focus-visible/);
   assert.match(css, /\.bl-page-web-tui[\s\S]*--bl-text-md:\s*16px/);
   assert.match(css, /\.bl-page-web-repl[\s\S]*min-height:\s*44px/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(css, /@media \(forced-colors: active\)/);
+  assert.match(css, /\.bl-visually-hidden\s*\{/);
 });
 
 function plain(value) {
@@ -303,6 +310,46 @@ test('live coordinator stops polling at ready and resumes immediately on disconn
   live.close();
   assert.equal(live.getState(), 'closed');
   assert.deepEqual(states.slice(0, 3), ['connecting', 'live', 'fallback']);
+});
+
+test('live coordinator pauses fallback refreshes while hidden and refreshes when visible', async () => {
+  const originalDocument = globalThis.document;
+  let hidden = true;
+  let visibilityListener;
+  let removedListener;
+  globalThis.document = {
+    get hidden() { return hidden; },
+    addEventListener(name, listener) {
+      if (name === 'visibilitychange') visibilityListener = listener;
+    },
+    removeEventListener(name, listener) {
+      if (name === 'visibilitychange') removedListener = listener;
+    },
+  };
+  try {
+    let socket;
+    let refreshes = 0;
+    const live = createPlayerLiveUpdates({
+      base: 'http://server.test',
+      characterId: 'character:1',
+      control: { claimId: 'claim-1', claimSecret: 'secret', clientId: 'client-1' },
+      refresh: () => { refreshes += 1; },
+      webSocketFactory: url => (socket = new FakePlayerSocket(url)),
+    });
+
+    socket.disconnect();
+    await wait(20);
+    assert.equal(refreshes, 0);
+    hidden = false;
+    visibilityListener();
+    await wait(20);
+    assert.equal(refreshes, 1);
+    live.close();
+    assert.equal(removedListener, visibilityListener);
+  } finally {
+    if (originalDocument === undefined) delete globalThis.document;
+    else globalThis.document = originalDocument;
+  }
 });
 
 test('live coordinator coalesces bursts and serializes a follow-up refresh', async () => {

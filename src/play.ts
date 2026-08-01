@@ -334,6 +334,7 @@ export function createPlayerLiveUpdates(options: CreatePlayerLiveUpdatesOptions)
   const seenEventIds = new Set<string>();
   const seenEventOrder: string[] = [];
   const random = options.random || Math.random;
+  const pageHidden = (): boolean => typeof document !== 'undefined' && document.hidden;
 
   const setState = (next: PlayerLiveState): void => {
     if (state === next) return;
@@ -365,7 +366,7 @@ export function createPlayerLiveUpdates(options: CreatePlayerLiveUpdatesOptions)
     }
   };
   const requestRefresh = (delay = 0): void => {
-    if (closed) return;
+    if (closed || pageHidden()) return;
     if (refreshing) {
       refreshPending = true;
       return;
@@ -378,9 +379,19 @@ export function createPlayerLiveUpdates(options: CreatePlayerLiveUpdatesOptions)
     pollTimer = null;
   };
   const startPolling = (): void => {
-    if (closed || pollTimer != null) return;
+    if (closed || pageHidden() || pollTimer != null) return;
     requestRefresh();
     pollTimer = setInterval(() => requestRefresh(), FALLBACK_POLL_MS);
+  };
+  const onVisibilityChange = (): void => {
+    if (pageHidden()) {
+      stopPolling();
+      if (refreshTimer != null) clearTimeout(refreshTimer);
+      refreshTimer = null;
+      return;
+    }
+    requestRefresh();
+    if (state !== 'live') startPolling();
   };
   const scheduleHeartbeat = (token: number): void => {
     clearHeartbeat();
@@ -475,6 +486,7 @@ export function createPlayerLiveUpdates(options: CreatePlayerLiveUpdatesOptions)
   };
 
   options.onState?.(state);
+  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisibilityChange);
   connect();
   return {
     close(): void {
@@ -487,6 +499,7 @@ export function createPlayerLiveUpdates(options: CreatePlayerLiveUpdatesOptions)
       refreshTimer = null;
       stopPolling();
       clearHeartbeat();
+      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisibilityChange);
       const current = socket;
       socket = null;
       current?.close();
