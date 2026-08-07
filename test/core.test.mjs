@@ -35,6 +35,7 @@ import {
   serverFromUrl,
   setPlayerAuth,
   socketUrl,
+  updateSpeechBubbles,
   bindThemeSelect,
   COLOR_SCHEME_KEY,
   currentColorScheme,
@@ -733,6 +734,43 @@ test('event and image helpers share player narration behavior', () => {
   assert.doesNotMatch(inspected.lines[0].text, /needs\.hunger|\[object Object\]/);
 });
 
+test('speech bubbles project, replace, truncate, and expire visible speech events', () => {
+  const now = Date.parse('2026-08-07T12:00:05.000Z');
+  const event = (eventType, body) => ({ data: { event_type: eventType, event: body } });
+  const bubbles = updateSpeechBubbles([], [
+    event('SpeechSaidEvent', {
+      event_id: 'speech:old', actor_id: 'character:1', text: 'First line',
+      created_at: '2026-08-07T12:00:01.000Z',
+    }),
+    event('SpeechToldEvent', {
+      event_id: 'speech:new', actor_id: 'character:1', text: 'x'.repeat(170),
+      created_at: '2026-08-07T12:00:02.000Z',
+    }),
+    event('ConversationLineEvent', {
+      event_id: 'conversation:1', actor_id: 'conversation:host', speaker_id: 'character:2',
+      text: 'A conversational reply', created_at: '2026-08-07T12:00:03.000Z',
+    }),
+    event('ActorMovedEvent', {
+      event_id: 'movement:1', actor_id: 'character:3', text: 'Not speech',
+      created_at: '2026-08-07T12:00:04.000Z',
+    }),
+  ], now);
+
+  assert.deepEqual(bubbles.map(bubble => bubble.speakerId), ['character:1', 'character:2']);
+  assert.equal(bubbles[0].eventId, 'speech:new');
+  assert.equal([...bubbles[0].text].length, 160);
+  assert.equal(bubbles[0].text.endsWith('…'), true);
+  assert.equal(bubbles[1].occurredAt, Date.parse('2026-08-07T12:00:03.000Z'));
+
+  const repeated = updateSpeechBubbles(bubbles, [event('SpeechToldEvent', {
+    event_id: 'speech:new', actor_id: 'character:1', text: 'x'.repeat(170),
+    created_at: '2026-08-07T12:00:02.000Z',
+  })], now + 500);
+  assert.equal(repeated[0].expiresAt, bubbles[0].expiresAt);
+  assert.deepEqual(updateSpeechBubbles(repeated, [], now + 3_500).map(bubble => bubble.speakerId), ['character:2']);
+  assert.deepEqual(updateSpeechBubbles(repeated, [], now + 4_000), []);
+});
+
 test('browser asset globals stay compatible with static clients', async () => {
   const classes = new Set();
   const values = new Map();
@@ -794,6 +832,7 @@ test('browser asset globals stay compatible with static clients', async () => {
   assert.equal(typeof context.BunnylandPlay.fetchCharacterProfile, 'function');
   assert.equal(typeof context.BunnylandPlay.fetchCharacterProfileList, 'function');
   assert.equal(typeof context.BunnylandPlay.createPlayerLiveUpdates, 'function');
+  assert.equal(typeof context.BunnylandPlay.updateSpeechBubbles, 'function');
   await context.BunnylandUI.loadConfig();
   assert.equal(context.BunnylandUI.currentTheme(), 'asset-linked');
   assert.equal(classes.has('bl-theme-asset-linked'), true);

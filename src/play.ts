@@ -211,6 +211,17 @@ export interface ActivityLine {
   icon?: string;
 }
 
+export interface SpeechBubble {
+  eventId: string;
+  speakerId: string;
+  text: string;
+  occurredAt: number;
+  expiresAt: number;
+}
+
+export const SPEECH_BUBBLE_LIFETIME_MS = 6_000;
+export const SPEECH_BUBBLE_MAX_TEXT_LENGTH = 160;
+
 export interface ClaimOptions {
   fallbackController?: string;
   timeoutSeconds?: number;
@@ -1067,6 +1078,59 @@ export function drainNarratedEvents(messages: unknown[], {
     }
   }
   return { lines, seenIds: current };
+}
+
+export function updateSpeechBubbles(
+  current: readonly SpeechBubble[],
+  messages: readonly unknown[],
+  now = Date.now(),
+): SpeechBubble[] {
+  const bubbles = new Map(
+    current
+      .filter(bubble => bubble.expiresAt > now)
+      .map(bubble => [bubble.speakerId, bubble]),
+  );
+  for (const message of messages) {
+    const data = messageData(message);
+    const eventType = String(data.event_type || '');
+    if (!SPEECH_EVENT_TYPES.has(eventType)) continue;
+    const event = (data.event || {}) as Record<string, unknown>;
+    const eventId = String(event.event_id || '');
+    const speakerId = String(eventType === 'ConversationLineEvent' ? event.speaker_id || '' : event.actor_id || '');
+    const text = truncateSpeechText(String(event.text || '').trim());
+    if (!eventId || !speakerId || !text) continue;
+    const occurredAt = eventOccurrenceTime(event.created_at, now);
+    const bubble: SpeechBubble = {
+      eventId,
+      speakerId,
+      text,
+      occurredAt,
+      expiresAt: occurredAt + SPEECH_BUBBLE_LIFETIME_MS,
+    };
+    if (bubble.expiresAt <= now) continue;
+    const previous = bubbles.get(speakerId);
+    if (!previous || bubble.occurredAt >= previous.occurredAt) bubbles.set(speakerId, bubble);
+  }
+  return [...bubbles.values()].sort((left, right) =>
+    left.occurredAt - right.occurredAt || left.eventId.localeCompare(right.eventId));
+}
+
+const SPEECH_EVENT_TYPES = new Set([
+  'SpeechSaidEvent',
+  'SpeechToldEvent',
+  'ConversationLineEvent',
+]);
+
+function eventOccurrenceTime(value: unknown, fallback: number): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  const parsed = Date.parse(String(value || ''));
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function truncateSpeechText(text: string): string {
+  const characters = [...text];
+  if (characters.length <= SPEECH_BUBBLE_MAX_TEXT_LENGTH) return text;
+  return `${characters.slice(0, SPEECH_BUBBLE_MAX_TEXT_LENGTH - 1).join('')}…`;
 }
 
 const UNNARRATED_EVENT_TYPES = new Set([
