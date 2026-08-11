@@ -213,6 +213,8 @@ test('all browser transport and configuration helpers enforce same-origin bases'
       'wss://sandbox.example/api/admin/world/stream',
     );
     assert.equal(mediaUrl('/api', '/public/media/image.png'), '/api/public/media/image.png');
+    assert.equal(mediaUrl('/api/v1/', '/v1/public/media/image.png'), '/api/v1/public/media/image.png');
+    assert.equal(mediaUrl('https://sandbox.example/v1/', '/v1/public/media/image.png'), 'https://sandbox.example/v1/public/media/image.png');
     assert.equal(mediaUrl('/api', 'data:image/png;base64,AA=='), 'data:image/png;base64,AA==');
     await sendJson('/api', '/public/health');
 

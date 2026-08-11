@@ -100,8 +100,8 @@ jobs:
             ghcr.io/thalismind/bunnyland-ui-web-storybook:main
             ghcr.io/thalismind/bunnyland-ui-web-storybook:${{ github.sha }}
           load: ${{ github.event_name != 'push' }}
-          provenance: mode=max
-          sbom: true
+          provenance: ${{ github.event_name == 'push' && 'mode=max' || 'false' }}
+          sbom: ${{ github.event_name == 'push' }}
       - name: Scan exact Storybook image
         uses: anchore/scan-action@v7.4.0
         with:

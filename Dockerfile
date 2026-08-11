@@ -9,6 +9,7 @@ RUN npm ci
 RUN npm audit --audit-level=high
 
 COPY README.md eslint.config.js tsconfig.json vite.config.ts vite.storybook.config.ts vitest.config.ts ./
+COPY .github/workflows/ci.yml .github/workflows/ci.yml
 COPY assets ./assets
 COPY docs ./docs
 COPY scripts ./scripts
