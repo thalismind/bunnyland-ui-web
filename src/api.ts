@@ -179,7 +179,12 @@ export function mediaUrl(base: string, url: string): string {
     assertSameOriginBase(url);
     return url;
   }
-  return `${assertSameOriginBase(base)}${url}`;
+  const normalized = assertSameOriginBase(base);
+  const version = normalized.match(/(\/v[0-9]+)$/)?.[1] ?? '';
+  const path = version && url.startsWith(`${version}/`)
+    ? url.slice(version.length)
+    : url;
+  return `${normalized}${path}`;
 }
 
 export async function requestSceneImage(base: string, characterId: string, control: ControlClaimLike | null = null): Promise<unknown> {
