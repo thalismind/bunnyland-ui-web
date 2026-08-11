@@ -45,6 +45,14 @@ import {
   themeOptions,
 } from '../dist/index.js';
 import { renderGalleryItems } from '../dist/player-widgets.js';
+import { escapeHtml } from '../dist/widgets.js';
+
+test('HTML helpers escape all text and attribute delimiters', () => {
+  const sensitive = `&<>"'`;
+  const escaped = '&amp;&lt;&gt;&quot;&#39;';
+
+  assert.equal(escapeHtml(sensitive), escaped);
+});
 
 test('shared application root preserves the bounded viewport flex chain', () => {
   const css = fs.readFileSync('assets/bunnyland-ui.css', 'utf8');
@@ -829,6 +837,7 @@ test('browser asset globals stay compatible with static clients', async () => {
   assert.equal(typeof context.BunnylandUI.credentialsDialog, 'function');
   assert.equal(typeof context.BunnylandUI.promptDialog, 'function');
   assert.equal(typeof context.BunnylandUI.setColorScheme, 'function');
+  assert.equal(context.BunnylandUI.escapeHtml(`&<>"'`), '&amp;&lt;&gt;&quot;&#39;');
   assert.equal(typeof context.BunnylandApi.normalizeBase, 'function');
   assert.equal(typeof context.BunnylandPlay.filterActions, 'function');
   assert.equal(typeof context.BunnylandPlay.fetchCharacterProfile, 'function');
